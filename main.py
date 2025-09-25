@@ -1,32 +1,23 @@
-from vkbottle.bot import Bot, Message
-from dotenv import load_dotenv
-from vkbottle import Keyboard, KeyboardButtonColor, Text
-import os
-load_dotenv()
+# main.py
+from core import bot, main_menu_inline
+import post_flow  # импорт регистрационных хендлеров и функции start_posting
+from vkbottle.bot import Message
 
-token = os.getenv("VK_TOKEN")
+# Показываем главное меню и делегируем на post_flow.start_posting для "Сдать".
+@bot.on.message(text="/start")
+async def start_cmd(message: Message):
+    await message.answer("Привет! Выберите действие:", keyboard=main_menu_inline())
 
-bot = Bot(token=token)
+# Обработчик для "Сдать" и "Снять" — оставляем в main (минимум логики)
+@bot.on.message(text=["Сдать", "сдать"])
+async def handle_sdat(message: Message):
+    # вызываем функцию из post_flow, которая стартует поток публикации
+    await post_flow.start_posting(message)
 
-@bot.on.message(text="Привет")
-async def hi_handler(message: Message):
-    await message.answer("Привет")
+@bot.on.message(text=["Снять", "снять"])
+async def handle_snyt(message: Message):
+    # пока заглушка, можно позже подключить поиск
+    await message.answer("Функция поиска (снять) пока не реализована — здесь будет список объявлений или фильтр.", keyboard=main_menu_inline())
 
-@bot.on.message(text="Выложить")
-async def choose_district(m: Message):
-    kb = (
-        Keyboard(one_time=False)  # обычная, не inline
-        .add(Text("Сормово"), color=KeyboardButtonColor.PRIMARY)
-        .add(Text("Автозавод"), color=KeyboardButtonColor.PRIMARY)
-        .row()
-        .add(Text("Нагорный"), color=KeyboardButtonColor.PRIMARY)
-        .add(Text("Советский"), color=KeyboardButtonColor.PRIMARY)
-        .add(Text("Сормово"), color=KeyboardButtonColor.PRIMARY)
-        .add(Text("Автозавод"), color=KeyboardButtonColor.PRIMARY)
-        .row()
-        .add(Text("Нагорный"), color=KeyboardButtonColor.PRIMARY)
-        .add(Text("Советский"), color=KeyboardButtonColor.PRIMARY)
-    )
-    await m.answer("Выбери район Нижнего Новгорода:", keyboard=kb.get_json())
-
-bot.run_forever()
+if __name__ == "__main__":
+    bot.run_forever()
