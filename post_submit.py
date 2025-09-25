@@ -12,6 +12,7 @@
 import os
 import time
 import logging
+import re
 from typing import Optional, Dict, Any, List
 import requests
 
@@ -28,6 +29,24 @@ GROUP_TOKEN = os.getenv("GROUP_TOKEN")      # можно использоват�
 UPLOAD_TOKEN = os.getenv("UPLOAD_TOKEN")    # рекомендуется: user-token админа для загрузки фото/постинга
 
 REQUEST_TIMEOUT = 30
+
+
+def format_price_display(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        if isinstance(value, str):
+            digits = re.sub(r"\D", "", value)
+            if not digits:
+                return value
+            numeric = int(digits)
+        else:
+            numeric = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+
+    formatted = format(numeric, ",").replace(",", ".")
+    return f"{formatted} ₽"
 
 
 def _vk_call(method: str, params: Dict[str, Any], token: Optional[str] = None) -> Dict[str, Any]:
@@ -72,7 +91,8 @@ def upload_photos_to_group(photo_urls: List[str]) -> Dict[str, Any]:
 
     attachments: List[str] = []
 
-    for idx, url in enumerate(photo_urls, start=1):
+    max_photos = 6
+    for idx, url in enumerate(photo_urls[:max_photos], start=1):
         logger.info("Downloading photo #%s from: %s", idx, url)
         try:
             resp = requests.get(url, timeout=REQUEST_TIMEOUT)
@@ -186,6 +206,8 @@ def send_to_scheduled(text: str, attachments: Optional[str] = None, delay_second
 
 def build_text_from_draft(draft: Dict[str, Any]) -> str:
     parts: List[str] = []
+    if draft.get("price") is not None:
+        parts.append(f"💰 Цена: {format_price_display(draft.get('price'))}")
     if draft.get("district"):
         parts.append(f"🏙 Район: {draft.get('district')}")
     if draft.get("address"):
@@ -194,8 +216,6 @@ def build_text_from_draft(draft: Dict[str, Any]) -> str:
         parts.append(f"🏢 Этаж: {draft.get('floor')}")
     if draft.get("rooms") is not None:
         parts.append(f"🚪 Комнат: {draft.get('rooms')}")
-    if draft.get("price") is not None:
-        parts.append(f"💰 Цена: {draft.get('price')}")
     if draft.get("description"):
         parts.append("")
         parts.append(draft.get("description"))

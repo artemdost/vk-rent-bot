@@ -79,6 +79,13 @@ class RentStates(BaseStateGroup):
     PHOTOS = "photos"
     PREVIEW = "preview"
 
+
+class SearchStates(BaseStateGroup):
+    DISTRICT = "search_district"
+    PRICE_MIN = "search_price_min"
+    PRICE_MAX = "search_price_max"
+    ROOMS = "search_rooms"
+
 # --- in-memory хранилище черновиков ---
 user_data: dict = {}
 
@@ -88,7 +95,7 @@ STATE_PROMPTS = {
     RentStates.ADDRESS: "Введите адрес:",
     RentStates.FLOOR: "Введите этаж (цифрами):",
     RentStates.ROOMS: "Введите количество комнат (цифрами):",
-    RentStates.PHOTOS: "Прикрепите фото (можно несколько). Отправьте фото или нажмите «Пропустить».",
+    RentStates.PHOTOS: "Прикрепите фото (до 6 штук).",
     RentStates.PRICE: "Введите цену (цифрами):",
     RentStates.DESCRIPTION: "Введите описание квартиры:",
     RentStates.FIO: "Введите ФИО (как вы хотите, чтобы с вами связались):",
@@ -104,13 +111,18 @@ def main_menu_inline() -> str:
 
 def district_keyboard_inline() -> str:
     kb = Keyboard(inline=True)
-    kb.add(Text("Центр"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Север"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Автозаводский"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Канавинский"), color=KeyboardButtonColor.PRIMARY)
     kb.row()
-    kb.add(Text("Юг"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Восток"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Ленинский"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Московский"), color=KeyboardButtonColor.PRIMARY)
     kb.row()
-    kb.add(Text("Запад"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Нижегородский"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Приокский"), color=KeyboardButtonColor.PRIMARY)
+    kb.row()
+    kb.add(Text("Советский"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Сормовский"), color=KeyboardButtonColor.PRIMARY)
+    kb.row()
     kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
     return kb.get_json()
 
@@ -124,19 +136,19 @@ def kb_for_state_inline(state) -> str:
 
 def kb_preview_inline(draft: dict) -> str:
     kb = Keyboard(inline=True)
-    kb.add(Text("Отправить в отложенные"), color=KeyboardButtonColor.POSITIVE)
-    kb.add(Text("Изменить район"))
+    kb.add(Text("Район"))
+    kb.add(Text("Телефон"))
     kb.row()
-    kb.add(Text("Изменить адрес"))
-    kb.add(Text("Изменить этаж"))
+    kb.add(Text("Адрес"))
+    kb.add(Text("Этаж"))
     kb.row()
-    kb.add(Text("Изменить комнат"))
-    kb.add(Text("Изменить цену"))
+    kb.add(Text("Комнаты"))
+    kb.add(Text("Цена"))
     kb.row()
-    kb.add(Text("Изменить описание"))
-    kb.add(Text("Изменить ФИО"))
+    kb.add(Text("Описание"))
+    kb.add(Text("ФИО"))
     kb.row()
-    kb.add(Text("Изменить телефон"))
+    kb.add(Text("Отправить"), color=KeyboardButtonColor.POSITIVE)
     kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
     return kb.get_json()
 
