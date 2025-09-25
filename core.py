@@ -1,18 +1,19 @@
 # core.py
-from vkbottle.bot import Bot, Message
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+from vkbottle.bot import Bot, Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text
 from vkbottle import BaseStateGroup
 
 load_dotenv()
-token = os.getenv("VK_TOKEN")
-if not token:
-    raise RuntimeError("VK_TOKEN не задан")
 
-bot = Bot(token=token)
+VK_TOKEN = os.getenv("VK_TOKEN")  # токен бота (или community token, если используешь)
+if not VK_TOKEN:
+    raise RuntimeError("VK_TOKEN не задан в .env")
 
-# ---- состояния ----
+bot = Bot(token=VK_TOKEN)
+
+# --- Состояния ---
 class RentStates(BaseStateGroup):
     DISTRICT = "district"
     ADDRESS = "address"
@@ -20,13 +21,27 @@ class RentStates(BaseStateGroup):
     ROOMS = "rooms"
     PRICE = "price"
     DESCRIPTION = "description"
-    PREVIEW = "preview"   # новый стейт — экран предпросмотра
+    PREVIEW = "preview"
 
-# ---- клавиатуры ----
+# --- in-memory хранилище черновиков ---
+# ключ: str(user_id) -> dict(черновик)
+user_data: dict = {}
+
+# --- тексты подсказок ---
+STATE_PROMPTS = {
+    RentStates.DISTRICT: "Выберите район:",
+    RentStates.ADDRESS: "Введите адрес:",
+    RentStates.FLOOR: "Введите этаж (цифрами):",
+    RentStates.ROOMS: "Введите количество комнат (цифрами):",
+    RentStates.PRICE: "Введите цену (цифрами):",
+    RentStates.DESCRIPTION: "Введите описание квартиры:",
+}
+
+# --- клавиатуры (INLINE) ---
 def main_menu_inline():
     kb = Keyboard(inline=True)
-    kb.add(Text("Сдать"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Снять"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Выложить объявление"))
+    kb.add(Text("Посмотреть объявления"))
     return kb.get_json()
 
 def district_keyboard_inline():
@@ -38,107 +53,49 @@ def district_keyboard_inline():
     kb.add(Text("Восток"), color=KeyboardButtonColor.PRIMARY)
     kb.row()
     kb.add(Text("Запад"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)  # кнопка меню
     return kb.get_json()
 
-def kb_with_back_inline():
+def kb_for_state_inline(state):
+    """
+    Inline keyboard for step. District has its own keyboard (without Назад).
+    Others have Назад + Меню buttons.
+    """
+    if state == RentStates.DISTRICT:
+        return district_keyboard_inline()
+
     kb = Keyboard(inline=True)
+    # add empty row if you want other buttons per state
     kb.add(Text("Назад"), color=KeyboardButtonColor.NEGATIVE)
     kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
     return kb.get_json()
 
-def kb_preview_inline():
-    """
-    Клавиатура предпросмотра: Разместить и кнопки для редактирования параметров.
-    Порядок кнопок — настраиваемый.
-    """
+def kb_preview_inline(draft: dict):
     kb = Keyboard(inline=True)
-    kb.add(Text("Разместить"), color=KeyboardButtonColor.POSITIVE)
+    kb.add(Text("Отправить в отложенные"), color=KeyboardButtonColor.POSITIVE)
+    kb.add(Text("Изменить район"))
     kb.row()
-    # редактирование полей
-    kb.add(Text("Изменить район"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Изменить адрес"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Изменить адрес"))
+    kb.add(Text("Изменить этаж"))
     kb.row()
-    kb.add(Text("Изменить этаж"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Изменить комнат"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Изменить комнат"))
+    kb.add(Text("Изменить цену"))
     kb.row()
-    kb.add(Text("Изменить цену"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Изменить описание"), color=KeyboardButtonColor.PRIMARY)
-    kb.row()
+    kb.add(Text("Изменить описание"))
     kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
     return kb.get_json()
 
-def kb_for_state_inline(state):
-    if normalize_state_name(state) == "district":
-        return district_keyboard_inline()
-    return kb_with_back_inline()
-
-# ---- подсказки ----
-STATE_PROMPTS = {
-    "district": "Выберите район:",
-    "address": "Введите адрес:",
-    "floor": "Введите этаж (цифрами):",
-    "rooms": "Введите количество комнат (цифрами):",
-    "price": "Введите цену (цифрами):",
-    "description": "Введите описание квартиры:",
-}
-
-# ---- хранилище ----
-user_data = {}          # временные черновики: key = str(user_id) -> dict
-published_ads = []      # список "опубликованных" объявлений (пример)
-
-# ---- карта Назад ----
-PREV = {
-    "address": "district",
-    "floor": "address",
-    "rooms": "floor",
-    "price": "rooms",
-    "description": "price",
-}
-
-# ---- утилиты ----
-def normalize_state_name(any_state) -> str:
-    s = str(any_state).lower()
-    for name in ("district", "address", "floor", "rooms", "price", "description", "preview"):
-        if name in s:
-            return name
-    return s
-
-async def prompt_for_state(message: Message, state, inline=True):
+# helper: отправить подсказку для состояния
+async def prompt_for_state(message: Message, state):
     uid = str(message.from_id)
     user_data.setdefault(uid, {})
-    sname = normalize_state_name(state)
-    prompt = STATE_PROMPTS.get(sname, "Действие:")
-    current = ""
-    if sname in ("district", "address", "floor", "rooms", "price", "description"):
-        val = user_data[uid].get(sname)
-        if val is not None:
-            current = f"\n(текущее: {val})"
-    kb = kb_for_state_inline(state) if inline else None
-    await message.answer(prompt + current, keyboard=kb)
-
-# ---- глобальные handlers: Назад / Меню (не трогать) ----
-@bot.on.message(text="Назад")
-async def core_back_handler(message: Message):
-    peer = message.peer_id
-    current = await bot.state_dispenser.get(peer)
-    if not current:
-        await bot.state_dispenser.delete(peer)
-        await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
-        return
-
-    cur_name = normalize_state_name(current)
-    prev_name = PREV.get(cur_name)
-    if prev_name:
-        prev_state = getattr(RentStates, prev_name.upper())
-        await bot.state_dispenser.set(peer, prev_state)
-        await prompt_for_state(message, prev_state, inline=True)
-    else:
-        await bot.state_dispenser.delete(peer)
-        await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
-
-@bot.on.message(text="Меню")
-async def core_menu_handler(message: Message):
-    peer = message.peer_id
-    await bot.state_dispenser.delete(peer)
-    await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
+    prompt = STATE_PROMPTS.get(state, "Действие:")
+    # покажем текущее значение, если есть
+    val = None
+    if state == RentStates.ADDRESS: val = user_data[uid].get("address")
+    if state == RentStates.FLOOR: val = user_data[uid].get("floor")
+    if state == RentStates.ROOMS: val = user_data[uid].get("rooms")
+    if state == RentStates.PRICE: val = user_data[uid].get("price")
+    if state == RentStates.DESCRIPTION: val = user_data[uid].get("description")
+    extra = f"\n(текущее: {val})" if val is not None else ""
+    await message.answer(prompt + extra, keyboard=kb_for_state_inline(state))
