@@ -13,7 +13,7 @@ token = os.getenv("VK_TOKEN")
 
 bot = Bot(token=token)
 
-# --- Состояния (FSM) ---
+# --- Состояния --- #
 class RentStates(BaseStateGroup):
     DISTRICT = "district"
     ADDRESS = "address"
@@ -22,6 +22,14 @@ class RentStates(BaseStateGroup):
     PRICE = "price"
     DESCRIPTION = "description"
 
+# --- Клавиатура с выьором начального действия --- #
+def main_menu_keyboard():
+    kb = (
+        Keyboard(one_time=False)
+        .add(Text("Выложить объявление"), color=KeyboardButtonColor.PRIMARY)
+        .add(Text("Посмотреть объявления"), color=KeyboardButtonColor.SECONDARY)
+    )
+    return kb.get_json()
 
 # --- Клавиатура с районами ---
 def district_keyboard():
@@ -45,9 +53,21 @@ user_data = {}
 # --- Старт ---
 @bot.on.message(text="/start")
 async def start(message: Message):
+    await message.answer("Привет! Выберите действие:", keyboard=main_menu_keyboard())
+
+
+# --- Главное меню ---
+@bot.on.message(text="Выложить объявление")
+async def post_rent(message: Message):
     user_data[message.from_id] = {}
     await bot.state_dispenser.set(message.peer_id, RentStates.DISTRICT)
-    await message.answer("Привет! Выберите район:", keyboard=district_keyboard())
+    await message.answer("Выберите район:", keyboard=district_keyboard())
+
+
+@bot.on.message(text="Посмотреть объявления")
+async def view_rent(message: Message):
+    # Здесь нужно добавить логику показа объявлений
+    await message.answer("Здесь будут объявления (пока заглушка).")
 
 
 # --- Выбор района ---
