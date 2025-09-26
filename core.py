@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # --- env / tokens ---
 # Preferred name: USER_TOKEN (если есть user access token администратора).
 # Для совместимости также читаем VK_TOKEN.
-USER_TOKEN = os.getenv("USER_TOKEN") or os.getenv("VK_TOKEN")
+USER_TOKEN = os.getenv("UPLOAD_TOKEN") or os.getenv("VK_TOKEN")
 GROUP_TOKEN = os.getenv("GROUP_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID") or 0)
 API_V = os.getenv("VK_API_VERSION", "5.199")
