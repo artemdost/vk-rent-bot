@@ -1,7 +1,7 @@
 # post_flow.py
 import re
 from typing import List, Dict, Any, Optional, Tuple
-
+from db import add_apartment
 import requests
 from vkbottle import Keyboard, KeyboardButtonColor, Text
 from vkbottle.bot import Message
@@ -821,6 +821,12 @@ async def send_scheduled_handler(message: Message):
     draft = user_data.get(uid)
     if not draft:
         await message.answer("Нет черновика для отправки.", keyboard=main_menu_inline())
+        return
+
+    try:
+        await add_apartment(draft)
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при сохранении в БД: {e}", keyboard=main_menu_inline())
         return
 
     text = build_text_from_draft(draft)

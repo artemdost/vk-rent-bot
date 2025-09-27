@@ -74,10 +74,10 @@ def _vk_call(method: str, params: Dict[str, Any], token: Optional[str] = None) -
 
 
 def upload_photos_to_group(photo_urls: List[str]) -> Dict[str, Any]:
-    """
-    Загружает список URL'ов фото в сообщество и возвращает {"response": {"attachments": "photo<owner>_<id>,..."}}
-    Требует рабочий токен (UPLOAD_TOKEN предпочтительный).
-    """
+    
+    #Загружает список URL'ов фото в сообщество и возвращает {"response": {"attachments": "photo<owner>_<id>,..."}}
+    #Требует рабочий токен (UPLOAD_TOKEN предпочтительный).
+    
     if not photo_urls:
         return {"response": {"attachments": None}}
 
@@ -168,7 +168,6 @@ def upload_photos_to_group(photo_urls: List[str]) -> Dict[str, Any]:
     attachments_str = ",".join(attachments) if attachments else None
     logger.info("All photos uploaded; attachments=%s", attachments_str)
     return {"response": {"attachments": attachments_str}}
-
 
 def send_to_scheduled(text: str, attachments: Optional[str] = None, delay_seconds: int = 3600) -> Dict[str, Any]:
     """
