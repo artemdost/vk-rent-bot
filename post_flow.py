@@ -1,6 +1,7 @@
 # post_flow.py
 import json
 import random
+import time
 import re
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -35,6 +36,24 @@ from post_submit import (
 MENU_GREETING = "Привет! Выберите действие:"
 START_COMMANDS = {"/start", "start", "начать", "старт"}
 
+ALLOW_GREETING_SUPPRESS_SECONDS = 5.0
+_recent_allow_greetings: Dict[int, float] = {}
+
+def _cleanup_recent_allow(now: float) -> None:
+    stale = [uid for uid, mark in _recent_allow_greetings.items() if now - mark > ALLOW_GREETING_SUPPRESS_SECONDS]
+    for uid in stale:
+        _recent_allow_greetings.pop(uid, None)
+
+def _mark_allow_greeting(user_id: int) -> None:
+    now = time.monotonic()
+    _recent_allow_greetings[user_id] = now
+    _cleanup_recent_allow(now)
+
+def _allow_greeted_recently(user_id: int) -> bool:
+    now = time.monotonic()
+    ts = _recent_allow_greetings.pop(user_id, None)
+    _cleanup_recent_allow(now)
+    return ts is not None and now - ts <= ALLOW_GREETING_SUPPRESS_SECONDS
 
 def _random_id() -> int:
     return random.randint(-2_147_483_648, 2_147_483_647)
@@ -324,8 +343,17 @@ def get_search_session(uid: str) -> Dict[str, Any]:
 
 
 def extract_int(text: str) -> Optional[int]:
-    digits = re.sub(r"\D", "", text)
-    return int(digits) if digits else None
+    if not text:
+        return None
+    normalized = text.replace(" ", "")
+    digits = re.sub(r"\D", "", normalized)
+    if not digits:
+        return None
+    first_digit_index = next((idx for idx, ch in enumerate(normalized) if ch.isdigit()), None)
+    if first_digit_index is None:
+        return None
+    sign = -1 if "-" in normalized[:first_digit_index + 1] else 1
+    return sign * int(digits)
 
 
 async def run_search_and_reply(message: Message, uid: str) -> None:
@@ -544,6 +572,13 @@ def _is_start_trigger(message: Message) -> bool:
 # ---------------------------
 @bot.on.message(func=_is_start_trigger)
 async def start_command(message: Message):
+    user_id = getattr(message, "from_id", None)
+    if user_id is not None:
+        try:
+            if _allow_greeted_recently(int(user_id)):
+                return
+        except (TypeError, ValueError):
+            pass
     await message.answer(MENU_GREETING, keyboard=main_menu_inline())
 
 @bot.on.raw_event(GroupEventType.MESSAGE_ALLOW, dataclass=GroupTypes.MessageAllow)
@@ -558,6 +593,10 @@ async def show_menu_on_allow(event: GroupTypes.MessageAllow):
             message=MENU_GREETING,
             keyboard=main_menu_inline(),
         )
+        try:
+            _mark_allow_greeting(int(user_id))
+        except (TypeError, ValueError):
+            pass
     except Exception:
         pass
 
