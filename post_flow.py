@@ -573,30 +573,51 @@ def _is_start_trigger(message: Message) -> bool:
 @bot.on.message(func=_is_start_trigger)
 async def start_command(message: Message):
     user_id = getattr(message, "from_id", None)
+    peer = message.peer_id
+    uid_int: Optional[int] = None
     if user_id is not None:
         try:
-            if _allow_greeted_recently(int(user_id)):
+            uid_int = int(user_id)
+            if _allow_greeted_recently(uid_int):
                 return
         except (TypeError, ValueError):
+            uid_int = None
+    if uid_int is not None:
+        _mark_allow_greeting(uid_int)
+
+    try:
+        await bot.state_dispenser.delete(peer)
+    except Exception:
+        pass
+    if user_id is not None:
+        try:
+            user_data.pop(str(user_id), None)
+        except Exception:
             pass
-    await message.answer(MENU_GREETING, keyboard=main_menu_inline())
+
+    await message.answer(f"{MENU_GREETING} [MSG]", keyboard=main_menu_inline())
 
 @bot.on.raw_event(GroupEventType.MESSAGE_ALLOW, dataclass=GroupTypes.MessageAllow)
 async def show_menu_on_allow(event: GroupTypes.MessageAllow):
     user_id = getattr(getattr(event, "object", None), "user_id", None)
     if not user_id:
         return
+    uid_int: Optional[int] = None
+    try:
+        uid_int = int(user_id)
+        if _allow_greeted_recently(uid_int):
+            return
+        _mark_allow_greeting(uid_int)
+    except (TypeError, ValueError):
+        uid_int = None
+
     try:
         await bot.api.messages.send(
             user_id=user_id,
             random_id=_random_id(),
-            message=MENU_GREETING,
+            message=f"{MENU_GREETING} [ALLOW]",
             keyboard=main_menu_inline(),
         )
-        try:
-            _mark_allow_greeting(int(user_id))
-        except (TypeError, ValueError):
-            pass
     except Exception:
         pass
 
@@ -766,10 +787,16 @@ async def price_handler(message: Message):
         return
 
     try:
-        user_data[uid]["price"] = int(text)
+        value = extract_int(text)
     except Exception:
-        await message.answer("Цена должна быть числом. Введите цифрами.", keyboard=state_keyboard(uid, RentStates.PRICE))
+        value = None
+    if value is None:
+        await message.answer("Цена должна быть числом. Попробуйте ещё раз.", keyboard=state_keyboard(uid, RentStates.PRICE))
         return
+    if value <= 0:
+        await message.answer("Цена должна быть положительной. Попробуйте ещё раз.", keyboard=state_keyboard(uid, RentStates.PRICE))
+        return
+    user_data[uid]["price"] = int(value)
 
     if await maybe_back_to_preview(message, uid):
         return
@@ -837,26 +864,20 @@ async def photos_handler(message: Message):
     # If attachments contain photos - extract and store
     photo_urls = await extract_photo_urls_from_message(message)
     if photo_urls:
-        max_photos = 6
         stored = user_data[uid].setdefault("photo_urls", [])
-        if len(stored) >= max_photos:
+        new_urls = [url for url in photo_urls if url not in stored]
+        if not new_urls:
             await message.answer(
-                f"Достигнут лимит в 6 фото. Нажмите «Готово» или удалите лишние, отправив «{cancel_label}».",
+                "These photos are already attached. Add new ones or use the buttons below.",
                 keyboard=photos_keyboard(uid),
             )
             return
 
-        slots_left = max_photos - len(stored)
-        to_add = photo_urls[:slots_left]
-        stored.extend(to_add)
-        cnt = len(stored)
-        added = len(to_add)
-        if added < len(photo_urls):
-            note = " (остальные проигнорированы, достигнут лимит 6 фото)"
-        else:
-            note = ""
+        stored.extend(new_urls)
+        added = len(new_urls)
+        total = len(stored)
         await message.answer(
-            f"Добавлено {added} фото. Всего: {cnt}{note}. Отправьте ещё или нажмите «Готово»/«Пропустить».",
+            f"Added {added} photo(s). Total stored: {total}.",
             keyboard=photos_keyboard(uid),
         )
         return
@@ -1076,8 +1097,10 @@ async def global_back_or_menu(message: Message):
 async def fallback_menu(message: Message):
     if getattr(message, "state_peer", None):
         return
+    if _is_start_trigger(message):
+        return
     text_value = (message.text or "").strip().lower()
     if text_value in START_COMMANDS or text_value in {"меню", "назад", "отмена"}:
         return
-    await message.answer(MENU_GREETING, keyboard=main_menu_inline())
+    await message.answer(f"{MENU_GREETING} [FALLBACK]", keyboard=main_menu_inline())
 
