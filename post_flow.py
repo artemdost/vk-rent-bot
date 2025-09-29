@@ -3,6 +3,7 @@ import json
 import random
 import time
 import re
+import os
 from typing import List, Dict, Any, Optional, Tuple
 
 import requests
@@ -35,6 +36,7 @@ from post_submit import (
 
 MENU_GREETING = "Привет! Выберите действие:"
 START_COMMANDS = {"/start", "start", "начать", "старт"}
+SEARCH_RESULTS_LIMIT = int(os.getenv("SEARCH_RESULTS_LIMIT", "20"))
 
 ALLOW_GREETING_SUPPRESS_SECONDS = 5.0
 _recent_allow_greetings: Dict[int, float] = {}
@@ -266,7 +268,7 @@ def parse_post_text(text: str) -> Dict[str, Any]:
     return parsed
 
 
-def search_posts(filters: Dict[str, Any], limit: int = 5, fetch_count: int = 100) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+def search_posts(filters: Dict[str, Any], limit: Optional[int] = None, fetch_count: int = 100) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     if not GROUP_ID:
         return [], "GROUP_ID не настроен"
     if not TOKEN_FOR_BOT:
@@ -293,6 +295,10 @@ def search_posts(filters: Dict[str, Any], limit: int = 5, fetch_count: int = 100
     items = resp.get("response", {}).get("items", [])
     if not isinstance(items, list):
         return [], "Некорректный ответ от VK"
+
+    target_limit = limit if limit is not None else SEARCH_RESULTS_LIMIT
+    if target_limit is not None and target_limit <= 0:
+        target_limit = None
 
     district_filter = filters.get("district")
     price_min = filters.get("price_min")
@@ -325,7 +331,7 @@ def search_posts(filters: Dict[str, Any], limit: int = 5, fetch_count: int = 100
                 continue
 
         matches.append({"item": item, "parsed": parsed})
-        if len(matches) >= limit:
+        if target_limit is not None and len(matches) >= target_limit:
             break
 
     return matches, None
