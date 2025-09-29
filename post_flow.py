@@ -595,7 +595,7 @@ async def start_command(message: Message):
         except Exception:
             pass
 
-    await message.answer(f"{MENU_GREETING} [MSG]", keyboard=main_menu_inline())
+    await message.answer(f"{MENU_GREETING}", keyboard=main_menu_inline())
 
 @bot.on.raw_event(GroupEventType.MESSAGE_ALLOW, dataclass=GroupTypes.MessageAllow)
 async def show_menu_on_allow(event: GroupTypes.MessageAllow):
@@ -615,7 +615,7 @@ async def show_menu_on_allow(event: GroupTypes.MessageAllow):
         await bot.api.messages.send(
             user_id=user_id,
             random_id=_random_id(),
-            message=f"{MENU_GREETING} [ALLOW]",
+            message=f"{MENU_GREETING}",
             keyboard=main_menu_inline(),
         )
     except Exception:
@@ -1102,5 +1102,5 @@ async def fallback_menu(message: Message):
     text_value = (message.text or "").strip().lower()
     if text_value in START_COMMANDS or text_value in {"меню", "назад", "отмена"}:
         return
-    await message.answer(f"{MENU_GREETING} [FALLBACK]", keyboard=main_menu_inline())
+    await message.answer(f"{MENU_GREETING}", keyboard=main_menu_inline())
 
