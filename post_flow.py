@@ -37,6 +37,7 @@ from post_submit import (
 MENU_GREETING = "Привет! Выберите действие:"
 START_COMMANDS = {"/start", "start", "начать", "старт"}
 SEARCH_RESULTS_LIMIT = int(os.getenv("SEARCH_RESULTS_LIMIT", "30"))
+SEARCH_RESULTS_PAGE_SIZE = 10
 
 ALLOW_GREETING_SUPPRESS_SECONDS = 5.0
 _recent_allow_greetings: Dict[int, float] = {}
@@ -227,6 +228,51 @@ def search_kb_for_state_inline(state) -> str:
     return kb.get_json()
 
 
+def search_results_keyboard(has_more: bool) -> str:
+    kb = Keyboard(inline=True)
+    if has_more:
+        kb.add(Text("Ещё 10"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
+
+
+async def send_search_results_chunk(message: Message, uid: str, chunk_size: int = SEARCH_RESULTS_PAGE_SIZE) -> bool:
+    session = get_search_session(uid)
+    results = session.get("results") or []
+    offset = session.get("results_offset", 0)
+    total = len(results)
+    if offset >= total:
+        return False
+
+    next_offset = min(total, offset + chunk_size)
+    for index in range(offset, next_offset):
+        match = results[index]
+        item = match["item"]
+        text = format_search_result(index + 1, item)
+        post_id = item.get("id")
+        if post_id is not None:
+            owner_part = -abs(int(GROUP_ID))
+            attachment = f"wall{owner_part}_{post_id}"
+            await message.answer(text, attachment=attachment)
+        else:
+            await message.answer(text)
+
+    session["results_offset"] = next_offset
+    if next_offset < total:
+        await message.answer(
+            f"Показал {next_offset} из {total}. Продолжить?",
+            keyboard=search_results_keyboard(True),
+        )
+        return True
+
+    await message.answer(
+        "Это все подходящие объявления.",
+        keyboard=main_menu_inline(),
+    )
+    return False
+
+
 async def prompt_search_state(message: Message, state) -> None:
     prompt = SEARCH_PROMPTS.get(state, "Введите значение:")
     await message.answer(prompt, keyboard=search_kb_for_state_inline(state))
@@ -396,7 +442,7 @@ def extract_int(text: str) -> Optional[int]:
 
 
 async def run_search_and_reply(message: Message, uid: str) -> None:
-    session = search_sessions.get(uid, {})
+    session = get_search_session(uid)
     filters = {
         "district": session.get("district"),
         "price_min": session.get("price_min"),
@@ -411,6 +457,8 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
             f"Не удалось получить объявления: {error}",
             keyboard=main_menu_inline(),
         )
+        await bot.state_dispenser.delete(message.peer_id)
+        _search_reset(uid)
         return
 
     if not matches:
@@ -418,24 +466,21 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
             "По заданным фильтрам ничего не найдено. Попробуйте изменить параметры.",
             keyboard=main_menu_inline(),
         )
+        await bot.state_dispenser.delete(message.peer_id)
+        _search_reset(uid)
         return
 
-    await message.answer(f"Нашёл {len(matches)} подходящих объявлений. Показываю их ниже.")
-    for idx, match in enumerate(matches, start=1):
-        item = match["item"]
-        text = format_search_result(idx, item)
-        post_id = item.get("id")
-        if post_id is not None:
-            owner_part = -abs(int(GROUP_ID))
-            attachment = f"wall{owner_part}_{post_id}"
-            await message.answer(text, attachment=attachment)
-        else:
-            await message.answer(text)
+    session["results"] = matches
+    session["results_offset"] = 0
 
-    await message.answer(
-        "Чтобы запустить новый поиск, вернитесь в меню и выберите снова «Посмотреть объявления».",
-        keyboard=main_menu_inline(),
-    )
+    total_found = len(matches)
+    await message.answer(f"Нашёл {total_found} подходящих объявлений.")
+    has_more = await send_search_results_chunk(message, uid, chunk_size=SEARCH_RESULTS_PAGE_SIZE)
+    if has_more:
+        await bot.state_dispenser.set(message.peer_id, SearchStates.RESULTS)
+    else:
+        await bot.state_dispenser.delete(message.peer_id)
+        _search_reset(uid)
 
 
 # ---------------------------
@@ -640,7 +685,37 @@ async def search_recent_days_handler(message: Message):
 
     await bot.state_dispenser.delete(peer)
     await run_search_and_reply(message, uid)
-    _search_reset(uid)
+
+
+@bot.on.message(state=SearchStates.RESULTS)
+async def search_results_handler(message: Message):
+    uid = str(message.from_id)
+    peer = message.peer_id
+    text = (message.text or "").strip().lower()
+
+    session = search_sessions.get(uid)
+    if not session or not session.get("results"):
+        await bot.state_dispenser.delete(peer)
+        await message.answer("Результаты поиска недоступны. Попробуйте запустить поиск заново.", keyboard=main_menu_inline())
+        _search_reset(uid)
+        return
+
+    if text in {"меню", "в меню", "выход"}:
+        _search_reset(uid)
+        await bot.state_dispenser.delete(peer)
+        await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
+        return
+
+    if text in {"ещё 10", "ещё", "еще 10", "еще", "продолжить"}:
+        has_more = await send_search_results_chunk(message, uid, chunk_size=SEARCH_RESULTS_PAGE_SIZE)
+        if not has_more:
+            await bot.state_dispenser.delete(peer)
+            _search_reset(uid)
+        return
+
+    has_more = session.get("results_offset", 0) < len(session.get("results", []))
+    keyboard = search_results_keyboard(has_more) if has_more else main_menu_inline()
+    await message.answer("Пожалуйста, используйте кнопки для навигации по результатам.", keyboard=keyboard)
 
 
 @bot.on.message(func=_is_start_trigger)
