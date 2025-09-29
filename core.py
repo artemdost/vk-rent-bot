@@ -85,6 +85,7 @@ class SearchStates(BaseStateGroup):
     PRICE_MIN = "search_price_min"
     PRICE_MAX = "search_price_max"
     ROOMS = "search_rooms"
+    RECENT_DAYS = "search_recent_days"
 
 # --- in-memory хранилище черновиков ---
 user_data: dict = {}

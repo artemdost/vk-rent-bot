@@ -36,7 +36,7 @@ from post_submit import (
 
 MENU_GREETING = "Привет! Выберите действие:"
 START_COMMANDS = {"/start", "start", "начать", "старт"}
-SEARCH_RESULTS_LIMIT = int(os.getenv("SEARCH_RESULTS_LIMIT", "20"))
+SEARCH_RESULTS_LIMIT = int(os.getenv("SEARCH_RESULTS_LIMIT", "30"))
 
 ALLOW_GREETING_SUPPRESS_SECONDS = 5.0
 _recent_allow_greetings: Dict[int, float] = {}
@@ -183,6 +183,7 @@ SEARCH_PROMPTS = {
     SearchStates.PRICE_MIN: "Укажите минимальную цену",
     SearchStates.PRICE_MAX: "Укажите максимальную цену",
     SearchStates.ROOMS: "Сколько комнат вас интересует?",
+    SearchStates.RECENT_DAYS: "Показать объявления за 7 дней, за 30 дней или без ограничения?",
 }
 
 search_sessions: Dict[str, Dict[str, Any]] = {}
@@ -205,6 +206,17 @@ def search_kb_for_state_inline(state) -> str:
         kb.row()
         kb.add(Text("Любой"), color=KeyboardButtonColor.SECONDARY)
         kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+        return kb.get_json()
+
+    if state == SearchStates.RECENT_DAYS:
+        kb = Keyboard(inline=True)
+        kb.add(Text("7 дней"), color=KeyboardButtonColor.PRIMARY)
+        kb.add(Text("30 дней"), color=KeyboardButtonColor.PRIMARY)
+        kb.row()
+        kb.add(Text("Не важно"), color=KeyboardButtonColor.SECONDARY)
+        kb.row()
+        kb.add(Text("Назад"), color=KeyboardButtonColor.NEGATIVE)
+        kb.add(Text("Выход"), color=KeyboardButtonColor.NEGATIVE)
         return kb.get_json()
 
     kb = Keyboard(inline=True)
@@ -300,6 +312,16 @@ def search_posts(filters: Dict[str, Any], limit: Optional[int] = None, fetch_cou
     if target_limit is not None and target_limit <= 0:
         target_limit = None
 
+    recent_days_filter = filters.get("recent_days")
+    if isinstance(recent_days_filter, str):
+        try:
+            recent_days_filter = int(recent_days_filter.strip())
+        except ValueError:
+            recent_days_filter = None
+    recent_threshold: Optional[float] = None
+    if isinstance(recent_days_filter, int) and recent_days_filter > 0:
+        recent_threshold = time.time() - recent_days_filter * 86400
+
     district_filter = filters.get("district")
     price_min = filters.get("price_min")
     price_max = filters.get("price_max")
@@ -307,6 +329,17 @@ def search_posts(filters: Dict[str, Any], limit: Optional[int] = None, fetch_cou
 
     matches: List[Dict[str, Any]] = []
     for item in items:
+        if recent_threshold is not None:
+            item_date = item.get("date")
+            if isinstance(item_date, str):
+                try:
+                    item_date = int(item_date.strip())
+                except ValueError:
+                    item_date = None
+            if not isinstance(item_date, (int, float)):
+                continue
+            if item_date < recent_threshold:
+                continue
         text = item.get("text", "")
         parsed = parse_post_text(text)
         if not parsed:
@@ -369,6 +402,7 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
         "price_min": session.get("price_min"),
         "price_max": session.get("price_max"),
         "rooms": session.get("rooms"),
+        "recent_days": session.get("recent_days"),
     }
 
     matches, error = search_posts(filters)
@@ -544,9 +578,8 @@ async def search_rooms_handler(message: Message):
             return
         session["rooms"] = value
 
-    await bot.state_dispenser.delete(peer)
-    await run_search_and_reply(message, uid)
-    _search_reset(uid)
+    await bot.state_dispenser.set(peer, SearchStates.RECENT_DAYS)
+    await prompt_search_state(message, SearchStates.RECENT_DAYS)
 
 def _is_start_trigger(message: Message) -> bool:
     text_value = (message.text or "").strip().lower()
@@ -576,6 +609,40 @@ def _is_start_trigger(message: Message) -> bool:
 # ---------------------------
 # Entry / Menu
 # ---------------------------
+@bot.on.message(state=SearchStates.RECENT_DAYS)
+async def search_recent_days_handler(message: Message):
+    uid = str(message.from_id)
+    peer = message.peer_id
+    text = (message.text or "").strip()
+
+    if text == "Выход":
+        _search_reset(uid)
+        await bot.state_dispenser.delete(peer)
+        await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
+        return
+    if text == "Назад":
+        await bot.state_dispenser.set(peer, SearchStates.ROOMS)
+        await prompt_search_state(message, SearchStates.ROOMS)
+        return
+
+    normalized = text.lower()
+    session = get_search_session(uid)
+
+    if normalized in {"", "не важно", "неважно"}:
+        session["recent_days"] = None
+    elif "7" in normalized:
+        session["recent_days"] = 7
+    elif "30" in normalized:
+        session["recent_days"] = 30
+    else:
+        await message.answer("Пожалуйста, выберите вариант из меню.", keyboard=search_kb_for_state_inline(SearchStates.RECENT_DAYS))
+        return
+
+    await bot.state_dispenser.delete(peer)
+    await run_search_and_reply(message, uid)
+    _search_reset(uid)
+
+
 @bot.on.message(func=_is_start_trigger)
 async def start_command(message: Message):
     user_id = getattr(message, "from_id", None)
