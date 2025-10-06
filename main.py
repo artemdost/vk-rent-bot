@@ -3,4 +3,10 @@ import core      # регистрирует bot, состояния и функ�
 import post_flow  # регистрирует хэндлеры, использует core.bot
 
 if __name__ == "__main__":
-    core.bot.run_forever()
+    try:
+        core.bot.run_forever()
+    except KeyboardInterrupt:
+        print("Bot stopped by user")
+    except Exception as e:
+        print(f"Bot crashed: {e}")
+        raise

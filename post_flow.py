@@ -4,6 +4,7 @@ import random
 import time
 import re
 import os
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 
 import requests
@@ -24,6 +25,9 @@ from core import (
     GROUP_ID,
     API_V,
     USER_TOKEN,
+    SUPPORT_URL,
+    MAX_SEARCHES_UNSUBSCRIBED,
+    storage,
 )
 from post_submit import (
     send_to_scheduled,
@@ -33,6 +37,8 @@ from post_submit import (
     format_price_display,
     DEFAULT_SCHEDULE_DELAY,
 )
+
+logger = logging.getLogger("post_flow")
 
 MENU_GREETING = "Привет! Выберите действие:"
 START_COMMANDS = {"/start", "start", "начать", "старт"}
@@ -68,6 +74,44 @@ def state_keyboard(uid: str, state) -> str:
 def photos_keyboard(uid: str) -> str:
     editing = bool(user_data.get(uid, {}).get("back_to_preview"))
     return kb_photos_inline(editing=editing)
+
+# ---------------------------
+# Функции проверки подписки
+# ---------------------------
+
+async def check_subscription(user_id: int) -> bool:
+    """Проверяет, подписан ли пользователь на сообщество."""
+    if not GROUP_ID or not TOKEN_FOR_BOT:
+        return True  # если нет настроек, разрешаем всем
+    
+    try:
+        resp = _vk_api_call(
+            "groups.isMember",
+            {
+                "group_id": str(GROUP_ID),
+                "user_id": str(user_id),
+            },
+            token=TOKEN_FOR_BOT
+        )
+        
+        if "error" in resp:
+            logger.warning("Error checking subscription for user %s: %s", user_id, resp["error"])
+            return True  # в случае ошибки разрешаем
+        
+        is_member = resp.get("response", 0)
+        return bool(is_member)
+    except Exception as e:
+        logger.exception("Exception checking subscription: %s", e)
+        return True  # в случае ошибки разрешаем
+
+
+def subscription_keyboard() -> str:
+    """Клавиатура с кнопкой подписки."""
+    kb = Keyboard(inline=True)
+    kb.add(Text("Проверить подписку"), color=KeyboardButtonColor.POSITIVE)
+    kb.row()
+    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
 
 # ---------------------------
 # Utility helpers
@@ -325,7 +369,6 @@ def parse_post_text(text: str) -> Dict[str, Any]:
                 break
     return parsed
 
-
 def search_posts(filters: Dict[str, Any], limit: Optional[int] = None, fetch_count: int = 100) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     if not GROUP_ID:
         return [], "GROUP_ID не настроен"
@@ -413,8 +456,12 @@ def search_posts(filters: Dict[str, Any], limit: Optional[int] = None, fetch_cou
         if target_limit is not None and len(matches) >= target_limit:
             break
 
-    return matches, None
+    # ===== ДОБАВЬТЕ ЭТИ СТРОКИ =====
+    # Сортируем по дате: старые первые (для удобного чтения снизу вверх в ЛС)
+    matches.sort(key=lambda x: x["item"].get("date", 0), reverse=False)
+    # ===============================
 
+    return matches, None
 
 def format_search_result(index: int, item: Dict[str, Any]) -> str:
     post_id = item.get("id")
@@ -440,7 +487,6 @@ def extract_int(text: str) -> Optional[int]:
     sign = -1 if "-" in normalized[:first_digit_index + 1] else 1
     return sign * int(digits)
 
-
 async def run_search_and_reply(message: Message, uid: str) -> None:
     session = get_search_session(uid)
     filters = {
@@ -457,7 +503,16 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
             f"Не удалось получить объявления: {error}",
             keyboard=main_menu_inline(),
         )
-        await bot.state_dispenser.delete(message.peer_id)
+        try:
+            try:
+
+                await bot.state_dispenser.delete(message.peer_id)
+
+            except (KeyError, Exception):
+
+                pass
+        except (KeyError, Exception):
+            pass
         _search_reset(uid)
         return
 
@@ -466,7 +521,16 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
             "По заданным фильтрам ничего не найдено. Попробуйте изменить параметры.",
             keyboard=main_menu_inline(),
         )
-        await bot.state_dispenser.delete(message.peer_id)
+        try:
+            try:
+
+                await bot.state_dispenser.delete(message.peer_id)
+
+            except (KeyError, Exception):
+
+                pass
+        except (KeyError, Exception):
+            pass
         _search_reset(uid)
         return
 
@@ -479,10 +543,17 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
     if has_more:
         await bot.state_dispenser.set(message.peer_id, SearchStates.RESULTS)
     else:
-        await bot.state_dispenser.delete(message.peer_id)
+        try:
+            try:
+
+                await bot.state_dispenser.delete(message.peer_id)
+
+            except (KeyError, Exception):
+
+                pass
+        except (KeyError, Exception):
+            pass
         _search_reset(uid)
-
-
 # ---------------------------
 # Search flow handlers
 # ---------------------------
@@ -498,7 +569,13 @@ async def search_district_handler(message: Message):
 
     if text == "Меню":
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
 
@@ -525,7 +602,13 @@ async def search_price_min_handler(message: Message):
 
     if text == "Меню":
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Назад":
@@ -560,7 +643,13 @@ async def search_price_max_handler(message: Message):
 
     if text == "Меню":
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Назад":
@@ -601,7 +690,13 @@ async def search_rooms_handler(message: Message):
 
     if text == "Меню":
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Назад":
@@ -662,7 +757,13 @@ async def search_recent_days_handler(message: Message):
 
     if text == "Выход":
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Назад":
@@ -683,7 +784,16 @@ async def search_recent_days_handler(message: Message):
         await message.answer("Пожалуйста, выберите вариант из меню.", keyboard=search_kb_for_state_inline(SearchStates.RECENT_DAYS))
         return
 
-    await bot.state_dispenser.delete(peer)
+    try:
+
+
+        await bot.state_dispenser.delete(peer)
+
+
+    except (KeyError, Exception):
+
+
+        pass
     await run_search_and_reply(message, uid)
 
 
@@ -695,21 +805,39 @@ async def search_results_handler(message: Message):
 
     session = search_sessions.get(uid)
     if not session or not session.get("results"):
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Результаты поиска недоступны. Попробуйте запустить поиск заново.", keyboard=main_menu_inline())
         _search_reset(uid)
         return
 
     if text in {"меню", "в меню", "выход"}:
         _search_reset(uid)
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
 
     if text in {"ещё 10", "ещё", "еще 10", "еще", "продолжить"}:
         has_more = await send_search_results_chunk(message, uid, chunk_size=SEARCH_RESULTS_PAGE_SIZE)
         if not has_more:
-            await bot.state_dispenser.delete(peer)
+            try:
+
+                await bot.state_dispenser.delete(peer)
+
+            except (KeyError, Exception):
+
+                pass
             _search_reset(uid)
         return
 
@@ -734,7 +862,13 @@ async def start_command(message: Message):
         _mark_allow_greeting(uid_int)
 
     try:
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
     except Exception:
         pass
     if user_id is not None:
@@ -769,13 +903,81 @@ async def show_menu_on_allow(event: GroupTypes.MessageAllow):
     except Exception:
         pass
 
+@bot.on.message(text="Поддержка")
+async def support_handler(message: Message):
+    support_text = (
+        "📞 Поддержка\n\n"
+        "Если у вас возникли вопросы или нужна помощь,\n"
+        "обратитесь к администратору:\n\n"
+        f"👤 {SUPPORT_URL}"
+    )
+    await message.answer(support_text, keyboard=main_menu_inline())
+
 @bot.on.message(text="Посмотреть")
 async def view_rents(message: Message):
     uid = str(message.from_id)
+    user_id = message.from_id
+    
+    # Проверяем подписку
+    is_subscribed = await check_subscription(user_id)
+    
+    if not is_subscribed:
+        # Проверяем лимит поисков
+        search_count = storage.get_search_count(user_id)
+        
+        if search_count >= MAX_SEARCHES_UNSUBSCRIBED:
+            await message.answer(
+                f"❌ Вы использовали все {MAX_SEARCHES_UNSUBSCRIBED} бесплатных поиска.\n\n"
+                f"Чтобы продолжить пользоваться поиском без ограничений, "
+                f"подпишитесь на наше сообщество:\n"
+                f"https://vk.com/club{GROUP_ID}\n\n"
+                f"После подписки нажмите «Проверить подписку».",
+                keyboard=subscription_keyboard()
+            )
+            return
+        
+        # Увеличиваем счетчик
+        new_count = storage.increment_search_count(user_id)
+        remaining = MAX_SEARCHES_UNSUBSCRIBED - new_count
+        
+        if remaining > 0:
+            await message.answer(
+                f"ℹ️ У вас осталось {remaining} бесплатных поисков.\n"
+                f"Подпишитесь на сообщество для неограниченного доступа:\n"
+                f"https://vk.com/club{GROUP_ID}"
+            )
+    
+    # Начинаем поиск
     search_sessions[uid] = {}
     await bot.state_dispenser.set(message.peer_id, SearchStates.DISTRICT)
     await message.answer("Подберём объявления из сообщества по вашим фильтрам.")
     await prompt_search_state(message, SearchStates.DISTRICT)
+
+@bot.on.message(text="Проверить подписку")
+async def check_subscription_handler(message: Message):
+    user_id = message.from_id
+    
+    is_subscribed = await check_subscription(user_id)
+    
+    if is_subscribed:
+        # Сбрасываем счетчик поисков
+        storage.reset_search_count(user_id)
+        
+        await message.answer(
+            "✅ Отлично! Вы подписаны на сообщество.\n"
+            "Теперь вы можете использовать поиск без ограничений!",
+            keyboard=main_menu_inline()
+        )
+    else:
+        search_count = storage.get_search_count(user_id)
+        remaining = MAX_SEARCHES_UNSUBSCRIBED - search_count
+        
+        await message.answer(
+            f"❌ Вы еще не подписаны на сообщество.\n\n"
+            f"Подпишитесь здесь: https://vk.com/club{GROUP_ID}\n\n"
+            f"Осталось бесплатных поисков: {remaining}",
+            keyboard=subscription_keyboard()
+        )
 
 @bot.on.message(text="Выложить")
 async def post_rent_start(message: Message):
@@ -795,7 +997,13 @@ async def district_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -822,7 +1030,13 @@ async def address_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -852,7 +1066,13 @@ async def floor_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -865,9 +1085,12 @@ async def floor_handler(message: Message):
         return
 
     try:
-        user_data[uid]["floor"] = int(text)
+        value = int(text)
+        if value <= 0:
+            raise ValueError
+        user_data[uid]["floor"] = value
     except Exception:
-        await message.answer("Этаж должен быть числом. Введите цифрами.", keyboard=state_keyboard(uid, RentStates.FLOOR))
+        await message.answer("Этаж должен быть положительным числом. Введите цифрами.", keyboard=state_keyboard(uid, RentStates.FLOOR))
         return
 
     if await maybe_back_to_preview(message, uid):
@@ -887,7 +1110,13 @@ async def rooms_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -900,9 +1129,12 @@ async def rooms_handler(message: Message):
         return
 
     try:
-        user_data[uid]["rooms"] = int(text)
+        value = int(text)
+        if value <= 0:
+            raise ValueError
+        user_data[uid]["rooms"] = value
     except Exception:
-        await message.answer("Количество комнат должно быть числом. Введите цифрами.", keyboard=state_keyboard(uid, RentStates.ROOMS))
+        await message.answer("Количество комнат должно быть положительным числом. Введите цифрами.", keyboard=state_keyboard(uid, RentStates.ROOMS))
         return
 
     if await maybe_back_to_preview(message, uid):
@@ -922,7 +1154,13 @@ async def price_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -963,7 +1201,13 @@ async def description_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -989,11 +1233,16 @@ async def photos_handler(message: Message):
     peer = message.peer_id
     text = (message.text or "").strip()
     user_data.setdefault(uid, {})
-    cancel_label = "Отмена" if user_data[uid].get("back_to_preview") else "Назад"
 
     # Buttons
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -1016,7 +1265,7 @@ async def photos_handler(message: Message):
         new_urls = [url for url in photo_urls if url not in stored]
         if not new_urls:
             await message.answer(
-                "These photos are already attached. Add new ones or use the buttons below.",
+                "Эти фото уже прикреплены. Добавьте новые или используйте кнопки.",
                 keyboard=photos_keyboard(uid),
             )
             return
@@ -1025,7 +1274,7 @@ async def photos_handler(message: Message):
         added = len(new_urls)
         total = len(stored)
         await message.answer(
-            f"Added {added} photo(s). Total stored: {total}.",
+            f"Добавлено {added} фото. Всего: {total}.",
             keyboard=photos_keyboard(uid),
         )
         return
@@ -1044,7 +1293,13 @@ async def fio_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -1075,7 +1330,13 @@ async def phone_handler(message: Message):
     user_data.setdefault(uid, {})
 
     if text == "Меню":
-        await bot.state_dispenser.delete(peer)
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
     if text == "Отмена":
@@ -1166,7 +1427,16 @@ async def send_scheduled_handler(message: Message):
 
     # clear draft and state
     user_data.pop(uid, None)
-    await bot.state_dispenser.delete(peer)
+    try:
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
+    except:
+        pass
 
 # ---------------------------
 # Edit handlers (from preview)
@@ -1192,7 +1462,7 @@ async def edit_floor(message: Message):
     await bot.state_dispenser.set(message.peer_id, RentStates.FLOOR)
     await prompt_for_state(message, RentStates.FLOOR)
 
-@bot.on.message(text="Комнат")
+@bot.on.message(text="Комнаты")
 async def edit_rooms(message: Message):
     uid = str(message.from_id)
     user_data.setdefault(uid, {})["back_to_preview"] = True
@@ -1234,11 +1504,18 @@ async def edit_phone(message: Message):
 async def global_back_or_menu(message: Message):
     text = (message.text or "").strip()
     peer = message.peer_id
-    if text == "Меню":
-        await bot.state_dispenser.delete(peer)
-        await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
-        return
-    await bot.state_dispenser.delete(peer)
+    
+    try:
+        try:
+
+            await bot.state_dispenser.delete(peer)
+
+        except (KeyError, Exception):
+
+            pass
+    except (KeyError, Exception):
+        pass  # игнорируем, если состояния нет
+    
     await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
 
 @bot.on.message()
@@ -1251,4 +1528,3 @@ async def fallback_menu(message: Message):
     if text_value in START_COMMANDS or text_value in {"меню", "назад", "отмена"}:
         return
     await message.answer(f"{MENU_GREETING}", keyboard=main_menu_inline())
-

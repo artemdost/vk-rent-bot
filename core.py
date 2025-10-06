@@ -8,6 +8,7 @@ from vkbottle import Keyboard, KeyboardButtonColor, Text
 from vkbottle import BaseStateGroup
 import requests
 from typing import Optional, Dict, Any
+from storage import storage
 
 load_dotenv()
 
@@ -22,6 +23,8 @@ USER_TOKEN = os.getenv("USER_TOKEN") or os.getenv("VK_TOKEN")
 GROUP_TOKEN = os.getenv("GROUP_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID") or 0)
 API_V = os.getenv("VK_API_VERSION", "5.199")
+SUPPORT_URL = os.getenv("SUPPORT_URL", "https://vk.com/")
+MAX_SEARCHES_UNSUBSCRIBED = int(os.getenv("MAX_SEARCHES_UNSUBSCRIBED", "3"))
 
 if not (USER_TOKEN or GROUP_TOKEN):
     raise RuntimeError("Нужен USER_TOKEN (или VK_TOKEN) или GROUP_TOKEN в .env")
@@ -109,6 +112,8 @@ def main_menu_inline() -> str:
     kb = Keyboard(inline=True)
     kb.add(Text("Выложить"))
     kb.add(Text("Посмотреть"))
+    kb.row()
+    kb.add(Text("Поддержка"), color=KeyboardButtonColor.SECONDARY)
     return kb.get_json()
 
 def district_keyboard_inline(editing: bool = False) -> str:
@@ -189,4 +194,3 @@ async def prompt_for_state(message: Message, state):
     extra = f"\n(текущее: {field_val})" if field_val else ""
     editing = bool(user_data[uid].get("back_to_preview"))
     await message.answer(prompt + extra, keyboard=kb_for_state_inline(state, editing=editing))
-

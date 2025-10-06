@@ -19,7 +19,7 @@ import requests
 logger = logging.getLogger("post_submit")
 logger.setLevel(logging.INFO)
 
-API_V = os.getenv("VK_API_VERSION", "5.131")
+API_V = os.getenv("VK_API_VERSION", "5.199")
 try:
     GROUP_ID = int(os.getenv("GROUP_ID", "0"))
 except Exception:

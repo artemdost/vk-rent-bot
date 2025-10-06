@@ -1,3 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual Environment
 venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
 .env
-__pychache__
+.env.local
+.env.*.local
+
+# Bot storage and logs
+bot_storage.json
+*.log
+*.log.*
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter
+.ipynb_checkpoints
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Certificates (если есть)
+*.pem
+*.crt
+*.key
+
+# Temporary
+*.tmp
+temp/
+tmp/
