@@ -114,11 +114,15 @@ class Storage:
 
             user_subs = self._data["user_subscriptions"].get(str(user_id), [])
 
+            # Получаем ID последнего поста чтобы не отправлять старые уведомления
+            last_post_id = self._data.get("last_checked_post_id")
+
             subscription = {
                 "id": str(uuid.uuid4())[:8],
                 "filters": filters,
                 "created_at": int(time.time()),
                 "enabled": True,
+                "last_notified_post_id": last_post_id,  # Начинаем с текущего последнего поста
             }
 
             user_subs.append(subscription)
@@ -200,6 +204,28 @@ class Storage:
         with _lock:
             self._data["last_checked_post_id"] = post_id
             _save_storage(self._data)
+
+    def update_subscription_last_notified_post(self, user_id: int, sub_id: str, post_id: int) -> None:
+        """
+        Обновляет ID последнего поста, о котором отправлено уведомление для подписки.
+
+        Args:
+            user_id: ID пользователя
+            sub_id: ID подписки
+            post_id: ID поста
+        """
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                return
+
+            user_subs = self._data["user_subscriptions"].get(str(user_id), [])
+
+            for sub in user_subs:
+                if sub.get("id") == sub_id:
+                    sub["last_notified_post_id"] = post_id
+                    self._data["user_subscriptions"][str(user_id)] = user_subs
+                    _save_storage(self._data)
+                    return
 
 
 # Создаем глобальный экземпляр

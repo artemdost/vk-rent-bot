@@ -29,8 +29,7 @@ ENV/
 .env.local
 .env.*.local
 
-# Bot storage and logs
-bot_storage.json
+# Bot logs
 *.log
 *.log.*
 

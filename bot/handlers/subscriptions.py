@@ -7,6 +7,7 @@ from vkbottle.bot import Message
 from vkbottle import Keyboard, KeyboardButtonColor, Text, Callback
 
 from bot.bot_instance import bot, search_sessions
+from bot.constants import Button, Message as Msg, Format
 from bot.keyboards import (
     main_menu_inline,
     subscriptions_list_keyboard,
@@ -24,31 +25,34 @@ def format_filters(filters: dict) -> str:
 
     district = filters.get("district")
     if district:
-        parts.append(f"Район: {district}")
+        parts.append(Format.FILTER_DISTRICT.format(district=district))
     else:
-        parts.append("Район: любой")
+        parts.append(Format.FILTER_DISTRICT_ANY)
 
     price_min = filters.get("price_min")
     price_max = filters.get("price_max")
     if price_min and price_max:
-        parts.append(f"Цена: {price_min:,} - {price_max:,} ₽".replace(",", " "))
+        parts.append(Format.FILTER_PRICE_RANGE.format(
+            min=f"{price_min:,}".replace(",", " "),
+            max=f"{price_max:,}".replace(",", " ")
+        ))
     elif price_min:
-        parts.append(f"Цена: от {price_min:,} ₽".replace(",", " "))
+        parts.append(Format.FILTER_PRICE_MIN.format(min=f"{price_min:,}".replace(",", " ")))
     elif price_max:
-        parts.append(f"Цена: до {price_max:,} ₽".replace(",", " "))
+        parts.append(Format.FILTER_PRICE_MAX.format(max=f"{price_max:,}".replace(",", " ")))
     else:
-        parts.append("Цена: любая")
+        parts.append(Format.FILTER_PRICE_ANY)
 
     rooms = filters.get("rooms")
     if rooms:
-        parts.append(f"Комнат: {rooms}")
+        parts.append(Format.FILTER_ROOMS.format(rooms=rooms))
     else:
-        parts.append("Комнат: любое")
+        parts.append(Format.FILTER_ROOMS_ANY)
 
     return "\n".join(parts)
 
 
-@bot.on.message(text="🔔 Подписаться на уведомления")
+@bot.on.message(text=Button.SUBSCRIBE)
 async def subscribe_to_notifications(message: Message):
     """Обработчик подписки на уведомления по текущему поиску."""
     uid = str(message.from_id)
@@ -58,7 +62,7 @@ async def subscribe_to_notifications(message: Message):
     session = search_sessions.get(uid)
     if not session or not session.get("results"):
         await message.answer(
-            "❌ Сначала выполните поиск, чтобы создать подписку на его параметры.",
+            Msg.ERROR_NO_SEARCH,
             keyboard=main_menu_inline(),
         )
         return
@@ -77,12 +81,11 @@ async def subscribe_to_notifications(message: Message):
         if existing_sub.get("filters") == filters:
             # Создаём клавиатуру для дублирующей подписки
             kb = Keyboard(inline=True)
-            kb.add(Text("Мои подписки"), color=KeyboardButtonColor.PRIMARY)
-            kb.add(Text("Меню"), color=KeyboardButtonColor.SECONDARY)
+            kb.add(Text(Button.MY_SUBSCRIPTIONS), color=KeyboardButtonColor.PRIMARY)
+            kb.add(Text(Button.MENU), color=KeyboardButtonColor.SECONDARY)
 
             await message.answer(
-                "⚠️ У вас уже есть активная подписка с такими же параметрами.\n\n"
-                "Вы можете управлять своими подписками через кнопку «Мои подписки».",
+                Msg.SUBSCRIPTION_DUPLICATE,
                 keyboard=kb.get_json(),
             )
             return
@@ -94,21 +97,18 @@ async def subscribe_to_notifications(message: Message):
 
     # Создаём клавиатуру с быстрым доступом к подпискам
     kb = Keyboard(inline=True)
-    kb.add(Text("Мои подписки"), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text("Меню"), color=KeyboardButtonColor.SECONDARY)
+    kb.add(Text(Button.MY_SUBSCRIPTIONS), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text(Button.MENU), color=KeyboardButtonColor.SECONDARY)
 
     await message.answer(
-        f"✅ Подписка создана!\n\n"
-        f"Вы будете получать уведомления о новых объявлениях с параметрами:\n\n"
-        f"{filter_text}\n\n"
-        f"Управлять подписками можно через кнопку «Мои подписки».",
+        f"{Msg.SUBSCRIPTION_CREATED}\n\n{Msg.SUBSCRIPTION_INFO.format(filters=filter_text)}",
         keyboard=kb.get_json(),
     )
 
     logger.info("User %s subscribed with ID %s", user_id, sub_id)
 
 
-@bot.on.message(text="Мои подписки")
+@bot.on.message(text=Button.MY_SUBSCRIPTIONS)
 async def show_subscriptions(message: Message):
     """Показывает список подписок пользователя."""
     user_id = message.from_id
@@ -116,11 +116,7 @@ async def show_subscriptions(message: Message):
 
     if not subscriptions:
         await message.answer(
-            "📭 У вас пока нет активных подписок.\n\n"
-            "Чтобы создать подписку:\n"
-            "1. Нажмите «Посмотреть»\n"
-            "2. Настройте параметры поиска\n"
-            "3. Нажмите «🔔 Подписаться на уведомления»",
+            Msg.NO_SUBSCRIPTIONS,
             keyboard=main_menu_inline(),
         )
         return
@@ -129,7 +125,7 @@ async def show_subscriptions(message: Message):
     text = f"📬 Ваши подписки ({len(subscriptions)}):\n\n"
 
     for idx, sub in enumerate(subscriptions, 1):
-        status = "✅ Активна" if sub.get("enabled", True) else "⏸ Отключена"
+        status = Format.SUBSCRIPTION_ACTIVE if sub.get("enabled", True) else Format.SUBSCRIPTION_PAUSED
         filter_text = format_filters(sub.get("filters", {}))
 
         text += f"{idx}. {status}\n"
@@ -141,26 +137,26 @@ async def show_subscriptions(message: Message):
 
     for idx, sub in enumerate(subscriptions, 1):
         is_enabled = sub.get("enabled", True)
-        icon = "✅" if is_enabled else "⏸"
-        kb.add(Text(f"{icon} Подписка #{idx}"))
+        prefix = Format.SUBSCRIPTION_BUTTON_ACTIVE_PREFIX if is_enabled else Format.SUBSCRIPTION_BUTTON_PAUSED_PREFIX
+        kb.add(Text(f"{prefix}{idx}"))
         if idx % 2 == 0:
             kb.row()
 
     if len(subscriptions) % 2 != 0:
         kb.row()
 
-    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text(Button.MENU), color=KeyboardButtonColor.NEGATIVE)
 
     await message.answer(text, keyboard=kb.get_json())
 
 
-@bot.on.message(text="⬅️ К подпискам")
+@bot.on.message(text=Button.BACK_TO_SUBSCRIPTIONS)
 async def back_to_subscriptions_handler(message: Message):
     """Обработчик кнопки возврата к подпискам."""
     await show_subscriptions(message)
 
 
-@bot.on.message(text=["⏸ Отключить", "▶️ Включить"])
+@bot.on.message(text=[Button.TOGGLE_DISABLE, Button.TOGGLE_ENABLE])
 async def toggle_subscription_handler(message: Message):
     """Обработчик переключения подписки."""
     user_id = message.from_id
@@ -172,21 +168,21 @@ async def toggle_subscription_handler(message: Message):
 
     if not sub_id:
         await message.answer(
-            "❌ Подписка не найдена. Выберите подписку из списка.",
+            Msg.ERROR_SUBSCRIPTION_NOT_FOUND,
             keyboard=main_menu_inline(),
         )
         return
 
     new_status = storage.toggle_subscription(user_id, sub_id)
-    status_text = "включена" if new_status else "отключена"
+    status_msg = Msg.SUBSCRIPTION_ENABLED if new_status else Msg.SUBSCRIPTION_DISABLED
 
     await message.answer(
-        f"✅ Подписка {status_text}.",
+        status_msg,
         keyboard=main_menu_inline(),
     )
 
 
-@bot.on.message(text="🗑 Удалить")
+@bot.on.message(text=Button.DELETE)
 async def delete_subscription_handler(message: Message):
     """Обработчик удаления подписки (первый шаг - запрос подтверждения)."""
     user_id = message.from_id
@@ -198,24 +194,23 @@ async def delete_subscription_handler(message: Message):
 
     if not sub_id:
         await message.answer(
-            "❌ Подписка не найдена. Выберите подписку из списка.",
+            Msg.ERROR_SUBSCRIPTION_NOT_FOUND,
             keyboard=main_menu_inline(),
         )
         return
 
     # Показываем подтверждение
     kb = Keyboard(inline=True)
-    kb.add(Text("✅ Да, удалить"), color=KeyboardButtonColor.NEGATIVE)
-    kb.add(Text("❌ Отмена"), color=KeyboardButtonColor.SECONDARY)
+    kb.add(Text(Button.CONFIRM_DELETE), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text(Button.CANCEL), color=KeyboardButtonColor.SECONDARY)
 
     await message.answer(
-        "⚠️ Вы уверены, что хотите удалить подписку?\n\n"
-        "Это действие нельзя отменить.",
+        Msg.SUBSCRIPTION_DELETE_CONFIRM,
         keyboard=kb.get_json(),
     )
 
 
-@bot.on.message(text="✅ Да, удалить")
+@bot.on.message(text=Button.CONFIRM_DELETE)
 async def confirm_delete_subscription_handler(message: Message):
     """Обработчик подтверждения удаления подписки."""
     user_id = message.from_id
@@ -227,7 +222,7 @@ async def confirm_delete_subscription_handler(message: Message):
 
     if not sub_id:
         await message.answer(
-            "❌ Подписка не найдена. Выберите подписку из списка.",
+            Msg.ERROR_SUBSCRIPTION_NOT_FOUND,
             keyboard=main_menu_inline(),
         )
         return
@@ -236,7 +231,7 @@ async def confirm_delete_subscription_handler(message: Message):
 
     if success:
         await message.answer(
-            "✅ Подписка удалена.",
+            Msg.SUBSCRIPTION_DELETED,
             keyboard=main_menu_inline(),
         )
         logger.info("User %s deleted subscription %s", user_id, sub_id)
@@ -245,16 +240,16 @@ async def confirm_delete_subscription_handler(message: Message):
             del session["current_subscription_id"]
     else:
         await message.answer(
-            "❌ Не удалось удалить подписку.",
+            Msg.ERROR_DELETE_FAILED,
             keyboard=main_menu_inline(),
         )
 
 
-@bot.on.message(text="❌ Отмена")
+@bot.on.message(text=Button.CANCEL)
 async def cancel_delete_subscription_handler(message: Message):
     """Обработчик отмены удаления подписки."""
     await message.answer(
-        "Удаление отменено.",
+        Msg.SUBSCRIPTION_DELETE_CANCELLED,
         keyboard=main_menu_inline(),
     )
 
@@ -262,7 +257,7 @@ async def cancel_delete_subscription_handler(message: Message):
 def is_subscription_button(message: Message) -> bool:
     """Проверяет, является ли сообщение кнопкой выбора подписки."""
     text = (message.text or "").strip()
-    return text.startswith("✅ Подписка #") or text.startswith("⏸ Подписка #")
+    return text.startswith(Format.SUBSCRIPTION_BUTTON_ACTIVE_PREFIX) or text.startswith(Format.SUBSCRIPTION_BUTTON_PAUSED_PREFIX)
 
 
 @bot.on.message(func=is_subscription_button)
@@ -275,7 +270,7 @@ async def select_subscription_handler(message: Message):
 
     if not subscriptions:
         await message.answer(
-            "❌ Подписка не найдена.",
+            Msg.ERROR_SUBSCRIPTION_NOT_FOUND,
             keyboard=main_menu_inline(),
         )
         return
@@ -288,7 +283,7 @@ async def select_subscription_handler(message: Message):
         sub = subscriptions[sub_num - 1]
     except (ValueError, IndexError):
         await message.answer(
-            "❌ Неверный номер подписки.",
+            Msg.ERROR_INVALID_SUBSCRIPTION_NUMBER,
             keyboard=main_menu_inline(),
         )
         return
@@ -301,7 +296,7 @@ async def select_subscription_handler(message: Message):
 
     # Показываем детали подписки с действиями
     is_enabled = sub.get("enabled", True)
-    status = "✅ Активна" if is_enabled else "⏸ Отключена"
+    status = Format.SUBSCRIPTION_ACTIVE if is_enabled else Format.SUBSCRIPTION_PAUSED
     filter_text = format_filters(sub.get("filters", {}))
 
     response_text = (
@@ -316,13 +311,13 @@ async def select_subscription_handler(message: Message):
     kb = Keyboard(inline=True)
 
     if is_enabled:
-        kb.add(Text("⏸ Отключить"))
+        kb.add(Text(Button.TOGGLE_DISABLE))
     else:
-        kb.add(Text("▶️ Включить"), color=KeyboardButtonColor.POSITIVE)
+        kb.add(Text(Button.TOGGLE_ENABLE), color=KeyboardButtonColor.POSITIVE)
 
-    kb.add(Text("🗑 Удалить"), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text(Button.DELETE), color=KeyboardButtonColor.NEGATIVE)
     kb.row()
-    kb.add(Text("⬅️ К подпискам"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text(Button.BACK_TO_SUBSCRIPTIONS), color=KeyboardButtonColor.PRIMARY)
 
     await message.answer(response_text, keyboard=kb.get_json())
 

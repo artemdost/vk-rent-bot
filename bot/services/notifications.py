@@ -202,18 +202,29 @@ async def check_new_posts_and_notify() -> int:
             if not parsed:
                 continue
 
+            post_id = post.get("id")
+
             # Проверяем каждую подписку
             for user_id, subscription in active_subs:
                 filters = subscription.get("filters", {})
+                sub_id = subscription.get("id")
+                last_notified = subscription.get("last_notified_post_id")
+
+                # Пропускаем если этот пост уже был отправлен этой подписке
+                if last_notified is not None and post_id <= last_notified:
+                    continue
 
                 if match_post_with_filters(parsed, filters):
                     success = await send_notification(user_id, post, filters)
                     if success:
                         notifications_sent += 1
+                        # Обновляем ID последнего отправленного поста для этой подписки
+                        storage.update_subscription_last_notified_post(user_id, sub_id, post_id)
                         logger.info(
-                            "Sent notification to user %s for post %s",
+                            "Sent notification to user %s for post %s (subscription %s)",
                             user_id,
-                            post.get("id"),
+                            post_id,
+                            sub_id,
                         )
 
                     # Небольшая задержка между отправками
