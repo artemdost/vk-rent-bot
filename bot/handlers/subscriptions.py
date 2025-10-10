@@ -80,17 +80,38 @@ async def subscribe_to_notifications(message: Message):
         "recent_days": session.get("recent_days"),
     }
 
+    # Проверяем на дубликаты
+    existing_subs = storage.get_user_subscriptions(user_id)
+    for existing_sub in existing_subs:
+        if existing_sub.get("filters") == filters:
+            # Создаём клавиатуру для дублирующей подписки
+            kb = Keyboard(inline=True)
+            kb.add(Text("Мои подписки"), color=KeyboardButtonColor.PRIMARY)
+            kb.add(Text("Меню"), color=KeyboardButtonColor.SECONDARY)
+
+            await message.answer(
+                "⚠️ У вас уже есть активная подписка с такими же параметрами.\n\n"
+                "Вы можете управлять своими подписками через кнопку «Мои подписки».",
+                keyboard=kb.get_json(),
+            )
+            return
+
     # Создаём подписку
     sub_id = storage.add_subscription(user_id, filters)
 
     filter_text = format_filters(filters)
 
+    # Создаём клавиатуру с быстрым доступом к подпискам
+    kb = Keyboard(inline=True)
+    kb.add(Text("Мои подписки"), color=KeyboardButtonColor.PRIMARY)
+    kb.add(Text("Меню"), color=KeyboardButtonColor.SECONDARY)
+
     await message.answer(
         f"✅ Подписка создана!\n\n"
         f"Вы будете получать уведомления о новых объявлениях с параметрами:\n\n"
         f"{filter_text}\n\n"
-        f"Управлять подписками можно через кнопку «Мои подписки» в главном меню.",
-        keyboard=main_menu_inline(),
+        f"Управлять подписками можно через кнопку «Мои подписки».",
+        keyboard=kb.get_json(),
     )
 
     logger.info("User %s subscribed with ID %s", user_id, sub_id)
@@ -137,7 +158,8 @@ async def show_subscriptions(message: Message):
     if len(subscriptions) % 2 != 0:
         kb.row()
 
-    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    # Убрали кнопку "Меню" - она и так работает глобально
+    # kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
 
     await message.answer(text, keyboard=kb.get_json())
 
@@ -176,7 +198,36 @@ async def toggle_subscription_handler(message: Message):
 
 @bot.on.message(text="🗑 Удалить")
 async def delete_subscription_handler(message: Message):
-    """Обработчик удаления подписки."""
+    """Обработчик удаления подписки (первый шаг - запрос подтверждения)."""
+    user_id = message.from_id
+    uid = str(user_id)
+
+    from bot.bot_instance import search_sessions
+    session = search_sessions.get(uid, {})
+    sub_id = session.get("current_subscription_id")
+
+    if not sub_id:
+        await message.answer(
+            "❌ Подписка не найдена. Выберите подписку из списка.",
+            keyboard=main_menu_inline(),
+        )
+        return
+
+    # Показываем подтверждение
+    kb = Keyboard(inline=True)
+    kb.add(Text("✅ Да, удалить"), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text("❌ Отмена"), color=KeyboardButtonColor.SECONDARY)
+
+    await message.answer(
+        "⚠️ Вы уверены, что хотите удалить подписку?\n\n"
+        "Это действие нельзя отменить.",
+        keyboard=kb.get_json(),
+    )
+
+
+@bot.on.message(text="✅ Да, удалить")
+async def confirm_delete_subscription_handler(message: Message):
+    """Обработчик подтверждения удаления подписки."""
     user_id = message.from_id
     uid = str(user_id)
 
@@ -207,6 +258,15 @@ async def delete_subscription_handler(message: Message):
             "❌ Не удалось удалить подписку.",
             keyboard=main_menu_inline(),
         )
+
+
+@bot.on.message(text="❌ Отмена")
+async def cancel_delete_subscription_handler(message: Message):
+    """Обработчик отмены удаления подписки."""
+    await message.answer(
+        "Удаление отменено.",
+        keyboard=main_menu_inline(),
+    )
 
 
 def is_subscription_button(message: Message) -> bool:
