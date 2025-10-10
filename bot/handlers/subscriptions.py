@@ -95,14 +95,15 @@ async def subscribe_to_notifications(message: Message):
 
     filter_text = format_filters(filters)
 
-    # Создаём клавиатуру с быстрым доступом к подпискам
-    kb = Keyboard(inline=True)
-    kb.add(Text(Button.MY_SUBSCRIPTIONS), color=KeyboardButtonColor.PRIMARY)
-    kb.add(Text(Button.MENU), color=KeyboardButtonColor.SECONDARY)
+    # Проверяем, есть ли еще результаты для показа
+    from bot.keyboards import search_results_keyboard
+    current_offset = session.get("offset", 0)
+    total_results = len(session.get("results", []))
+    has_more = current_offset < total_results
 
     await message.answer(
         f"{Msg.SUBSCRIPTION_CREATED}\n\n{Msg.SUBSCRIPTION_INFO.format(filters=filter_text)}",
-        keyboard=kb.get_json(),
+        keyboard=search_results_keyboard(has_more=has_more, show_subscribe=False),
     )
 
     logger.info("User %s subscribed with ID %s", user_id, sub_id)
