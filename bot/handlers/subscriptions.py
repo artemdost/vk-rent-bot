@@ -209,15 +209,16 @@ async def delete_subscription_handler(message: Message):
         )
 
 
-@bot.on.message()
+def is_subscription_button(message: Message) -> bool:
+    """Проверяет, является ли сообщение кнопкой выбора подписки."""
+    text = (message.text or "").strip()
+    return text.startswith("✅ Подписка #") or text.startswith("⏸ Подписка #")
+
+
+@bot.on.message(func=is_subscription_button)
 async def select_subscription_handler(message: Message):
     """Обработчик выбора конкретной подписки из списка."""
     text = (message.text or "").strip()
-
-    # Проверяем, это кнопка выбора подписки
-    if not text.startswith("✅ Подписка #") and not text.startswith("⏸ Подписка #"):
-        return
-
     user_id = message.from_id
     uid = str(user_id)
     subscriptions = storage.get_user_subscriptions(user_id)
