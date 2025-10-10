@@ -433,6 +433,14 @@ async def search_recent_days_handler(message: Message):
     await run_search_and_reply(message, uid, is_subscribed)
 
 
+@bot.on.message(state=SearchStates.RESULTS, text="🔔 Подписаться на уведомления")
+async def subscribe_from_results(message: Message):
+    """Обработчик подписки прямо из результатов поиска."""
+    from bot.handlers.subscriptions import subscribe_to_notifications
+    # Вызываем основной обработчик подписки
+    await subscribe_to_notifications(message)
+
+
 @bot.on.message(state=SearchStates.RESULTS)
 async def search_results_handler(message: Message):
     """Обработчик навигации по результатам поиска."""
@@ -462,11 +470,6 @@ async def search_results_handler(message: Message):
         except (KeyError, Exception):
             pass
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
-        return
-
-    # Обработка кнопки подписки - пропускаем в основной обработчик
-    if text == "🔔 Подписаться на уведомления":
-        # Не обрабатываем здесь, пусть обработает subscribe_to_notifications
         return
 
     if text_lower in {"ещё 10", "ещё", "еще 10", "еще", "продолжить"}:
