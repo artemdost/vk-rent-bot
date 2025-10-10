@@ -154,8 +154,14 @@ async def run_search_and_reply(message: Message, uid: str, is_subscribed: bool) 
                 f"https://vk.com/club{GROUP_ID}"
             )
 
+    # ВСЕГДА показываем кнопку подписки, даже если есть еще результаты
     if has_more:
         await bot.state_dispenser.set(message.peer_id, SearchStates.RESULTS)
+        # Отправляем дополнительное сообщение с кнопкой подписки
+        await message.answer(
+            "💡 Хотите получать уведомления о новых объявлениях с такими параметрами?",
+            keyboard=search_results_keyboard(True, show_subscribe=True)
+        )
     else:
         try:
             try:
