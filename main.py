@@ -1,12 +1,20 @@
-# main.py
-import core      # регистрирует bot, состояния и функции
-import post_flow  # регистрирует хэндлеры, использует core.bot
+"""
+Точка входа для VK бота аренды квартир.
+Запуск: python main.py
+"""
+# Импортируем bot_instance напрямую чтобы получить экземпляр бота
+from bot import bot_instance
+from bot.config import LOG
+
+# Импортируем хендлеры для регистрации
+import bot.handlers
 
 if __name__ == "__main__":
     try:
-        core.bot.run_forever()
+        LOG.info("Bot starting...")
+        bot_instance.bot.run_forever()
     except KeyboardInterrupt:
-        print("Bot stopped by user")
+        LOG.info("Bot stopped by user")
     except Exception as e:
-        print(f"Bot crashed: {e}")
+        LOG.exception("Bot crashed: %s", e)
         raise
