@@ -164,7 +164,8 @@ async def run_search_and_reply(message: Message, uid: str, is_subscribed: bool) 
                 pass
         except (KeyError, Exception):
             pass
-        _search_reset(uid)
+        # НЕ удаляем сессию, чтобы пользователь мог подписаться на уведомления
+        # _search_reset(uid)
 
 
 # ===== HANDLERS =====
@@ -470,11 +471,12 @@ async def search_results_handler(message: Message):
                 await bot.state_dispenser.delete(peer)
             except (KeyError, Exception):
                 pass
-            _search_reset(uid)
+            # НЕ удаляем сессию, чтобы можно было подписаться
+            # _search_reset(uid)
         return
 
     has_more = session.get("results_offset", 0) < len(session.get("results", []))
-    keyboard = search_results_keyboard(has_more) if has_more else main_menu_inline()
+    keyboard = search_results_keyboard(has_more, show_subscribe=True)
     await message.answer(
         "Пожалуйста, используйте кнопки для навигации по результатам.", keyboard=keyboard
     )
