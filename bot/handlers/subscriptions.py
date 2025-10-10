@@ -146,13 +146,75 @@ async def show_subscriptions(message: Message):
 async def handle_subscription_action(message: Message):
     """Обработчик действий с подписками."""
     text = (message.text or "").strip()
+    user_id = message.from_id
+    uid = str(user_id)
 
-    # Проверяем, это кнопка подписки
+    # Импорты
+    from bot.bot_instance import search_sessions
+
+    # Обработка кнопки "⬅️ К подпискам"
+    if text == "⬅️ К подпискам":
+        await show_subscriptions(message)
+        return
+
+    # Обработка кнопок "⏸ Отключить" или "▶️ Включить"
+    if text in ["⏸ Отключить", "▶️ Включить"]:
+        session = search_sessions.get(uid, {})
+        sub_id = session.get("current_subscription_id")
+
+        if not sub_id:
+            await message.answer(
+                "❌ Подписка не найдена. Выберите подписку из списка.",
+                keyboard=main_menu_inline(),
+            )
+            return
+
+        new_status = storage.toggle_subscription(user_id, sub_id)
+        status_text = "включена" if new_status else "отключена"
+
+        await message.answer(
+            f"✅ Подписка {status_text}.",
+            keyboard=main_menu_inline(),
+        )
+        await show_subscriptions(message)
+        return
+
+    # Обработка кнопки "🗑 Удалить"
+    if text == "🗑 Удалить":
+        session = search_sessions.get(uid, {})
+        sub_id = session.get("current_subscription_id")
+
+        if not sub_id:
+            await message.answer(
+                "❌ Подписка не найдена. Выберите подписку из списка.",
+                keyboard=main_menu_inline(),
+            )
+            return
+
+        success = storage.delete_subscription(user_id, sub_id)
+
+        if success:
+            await message.answer(
+                "✅ Подписка удалена.",
+                keyboard=main_menu_inline(),
+            )
+            logger.info("User %s deleted subscription %s", user_id, sub_id)
+            # Очищаем сессию
+            if "current_subscription_id" in session:
+                del session["current_subscription_id"]
+            # Показываем обновленный список
+            await show_subscriptions(message)
+        else:
+            await message.answer(
+                "❌ Не удалось удалить подписку.",
+                keyboard=main_menu_inline(),
+            )
+        return
+
+    # Проверяем, это кнопка выбора подписки
     if not text.startswith("✅ Подписка #") and not text.startswith("⏸ Подписка #"):
         return
 
-    user_id = message.from_id
-    uid = str(user_id)
     subscriptions = storage.get_user_subscriptions(user_id)
 
     if not subscriptions:
@@ -176,7 +238,6 @@ async def handle_subscription_action(message: Message):
         return
 
     # Сохраняем ID подписки в сессии для дальнейших действий
-    from bot.bot_instance import search_sessions
     if uid not in search_sessions:
         search_sessions[uid] = {}
     search_sessions[uid]["current_subscription_id"] = sub["id"]
@@ -209,76 +270,3 @@ async def handle_subscription_action(message: Message):
     await message.answer(response_text, keyboard=kb.get_json())
 
 
-@bot.on.message(text=["⏸ Отключить", "▶️ Включить"])
-async def toggle_subscription(message: Message):
-    """Переключает статус подписки."""
-    user_id = message.from_id
-    uid = str(user_id)
-
-    # Получаем ID подписки из сессии
-    from bot.bot_instance import search_sessions
-    session = search_sessions.get(uid, {})
-    sub_id = session.get("current_subscription_id")
-
-    if not sub_id:
-        await message.answer(
-            "❌ Подписка не найдена. Выберите подписку из списка.",
-            keyboard=main_menu_inline(),
-        )
-        return
-
-    new_status = storage.toggle_subscription(user_id, sub_id)
-
-    status_text = "включена" if new_status else "отключена"
-
-    await message.answer(
-        f"✅ Подписка {status_text}.",
-        keyboard=main_menu_inline(),
-    )
-
-    # Перенаправляем обратно к списку подписок
-    await show_subscriptions(message)
-
-
-@bot.on.message(text="🗑 Удалить")
-async def delete_subscription(message: Message):
-    """Удаляет подписку."""
-    user_id = message.from_id
-    uid = str(user_id)
-
-    # Получаем ID подписки из сессии
-    from bot.bot_instance import search_sessions
-    session = search_sessions.get(uid, {})
-    sub_id = session.get("current_subscription_id")
-
-    if not sub_id:
-        await message.answer(
-            "❌ Подписка не найдена. Выберите подписку из списка.",
-            keyboard=main_menu_inline(),
-        )
-        return
-
-    success = storage.delete_subscription(user_id, sub_id)
-
-    if success:
-        await message.answer(
-            "✅ Подписка удалена.",
-            keyboard=main_menu_inline(),
-        )
-        logger.info("User %s deleted subscription %s", user_id, sub_id)
-        # Очищаем сессию
-        if "current_subscription_id" in session:
-            del session["current_subscription_id"]
-        # Показываем обновленный список
-        await show_subscriptions(message)
-    else:
-        await message.answer(
-            "❌ Не удалось удалить подписку.",
-            keyboard=main_menu_inline(),
-        )
-
-
-@bot.on.message(text="⬅️ К подпискам")
-async def back_to_subscriptions(message: Message):
-    """Возврат к списку подписок."""
-    await show_subscriptions(message)
