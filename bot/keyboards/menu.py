@@ -10,6 +10,8 @@ def main_menu_inline() -> str:
     kb.add(Text("Выложить"))
     kb.add(Text("Посмотреть"))
     kb.row()
+    kb.add(Text("Мои подписки"), color=KeyboardButtonColor.PRIMARY)
+    kb.row()
     kb.add(Text("Поддержка"), color=KeyboardButtonColor.SECONDARY)
     return kb.get_json()
 

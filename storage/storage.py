@@ -5,7 +5,7 @@
 import json
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from threading import Lock
 
 from bot.config import STORAGE_FILE
@@ -19,7 +19,12 @@ _lock = Lock()
 def _load_storage() -> Dict[str, Any]:
     """Загружает данные из JSON файла."""
     if not os.path.exists(STORAGE_FILE):
-        return {"user_search_count": {}, "user_data": {}}
+        return {
+            "user_search_count": {},
+            "user_data": {},
+            "user_subscriptions": {},  # {user_id: [subscription_obj, ...]}
+            "last_checked_post_id": None,  # ID последнего проверенного поста
+        }
 
     try:
         with open(STORAGE_FILE, "r", encoding="utf-8") as f:
@@ -85,6 +90,115 @@ class Storage:
         """Очищает все счетчики поисков (для админских целей)."""
         with _lock:
             self._data["user_search_count"] = {}
+            _save_storage(self._data)
+
+    # === Методы для работы с подписками ===
+
+    def add_subscription(self, user_id: int, filters: Dict[str, Any]) -> str:
+        """
+        Добавляет подписку пользователя на параметры поиска.
+
+        Args:
+            user_id: ID пользователя
+            filters: Фильтры поиска
+
+        Returns:
+            ID созданной подписки
+        """
+        import uuid
+        import time
+
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                self._data["user_subscriptions"] = {}
+
+            user_subs = self._data["user_subscriptions"].get(str(user_id), [])
+
+            subscription = {
+                "id": str(uuid.uuid4())[:8],
+                "filters": filters,
+                "created_at": int(time.time()),
+                "enabled": True,
+            }
+
+            user_subs.append(subscription)
+            self._data["user_subscriptions"][str(user_id)] = user_subs
+            _save_storage(self._data)
+
+            return subscription["id"]
+
+    def get_user_subscriptions(self, user_id: int) -> List[Dict[str, Any]]:
+        """Получает все подписки пользователя."""
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                return []
+            return self._data["user_subscriptions"].get(str(user_id), []).copy()
+
+    def toggle_subscription(self, user_id: int, sub_id: str) -> bool:
+        """
+        Переключает состояние подписки (вкл/выкл).
+
+        Returns:
+            Новое состояние подписки (True = включена)
+        """
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                return False
+
+            user_subs = self._data["user_subscriptions"].get(str(user_id), [])
+
+            for sub in user_subs:
+                if sub["id"] == sub_id:
+                    sub["enabled"] = not sub.get("enabled", True)
+                    _save_storage(self._data)
+                    return sub["enabled"]
+
+            return False
+
+    def delete_subscription(self, user_id: int, sub_id: str) -> bool:
+        """Удаляет подписку пользователя."""
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                return False
+
+            user_subs = self._data["user_subscriptions"].get(str(user_id), [])
+            new_subs = [s for s in user_subs if s["id"] != sub_id]
+
+            if len(new_subs) < len(user_subs):
+                self._data["user_subscriptions"][str(user_id)] = new_subs
+                _save_storage(self._data)
+                return True
+
+            return False
+
+    def get_all_active_subscriptions(self) -> List[tuple]:
+        """
+        Получает все активные подписки всех пользователей.
+
+        Returns:
+            Список кортежей (user_id, subscription)
+        """
+        with _lock:
+            if "user_subscriptions" not in self._data:
+                return []
+
+            result = []
+            for user_id_str, subs in self._data["user_subscriptions"].items():
+                for sub in subs:
+                    if sub.get("enabled", True):
+                        result.append((int(user_id_str), sub))
+
+            return result
+
+    def get_last_checked_post_id(self) -> Optional[int]:
+        """Получает ID последнего проверенного поста."""
+        with _lock:
+            return self._data.get("last_checked_post_id")
+
+    def set_last_checked_post_id(self, post_id: int) -> None:
+        """Сохраняет ID последнего проверенного поста."""
+        with _lock:
+            self._data["last_checked_post_id"] = post_id
             _save_storage(self._data)
 
 

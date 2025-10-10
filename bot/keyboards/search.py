@@ -44,11 +44,36 @@ def search_kb_for_state_inline(state) -> str:
     return kb.get_json()
 
 
-def search_results_keyboard(has_more: bool) -> str:
+def search_results_keyboard(has_more: bool, show_subscribe: bool = False) -> str:
     """Клавиатура для результатов поиска."""
     kb = Keyboard(inline=True)
     if has_more:
         kb.add(Text("Ещё 10"), color=KeyboardButtonColor.PRIMARY)
         kb.row()
+    if show_subscribe:
+        kb.add(Text("🔔 Подписаться на уведомления"), color=KeyboardButtonColor.POSITIVE)
+        kb.row()
     kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
+
+
+def subscriptions_list_keyboard() -> str:
+    """Клавиатура для списка подписок."""
+    kb = Keyboard(inline=True)
+    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    return kb.get_json()
+
+
+def subscription_actions_keyboard(is_enabled: bool) -> str:
+    """Клавиатура для действий с подпиской."""
+    kb = Keyboard(inline=True)
+
+    if is_enabled:
+        kb.add(Text("⏸ Отключить"), color=KeyboardButtonColor.SECONDARY)
+    else:
+        kb.add(Text("▶️ Включить"), color=KeyboardButtonColor.POSITIVE)
+
+    kb.add(Text("🗑 Удалить"), color=KeyboardButtonColor.NEGATIVE)
+    kb.row()
+    kb.add(Text("⬅️ Назад"), color=KeyboardButtonColor.PRIMARY)
     return kb.get_json()

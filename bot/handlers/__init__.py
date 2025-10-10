@@ -3,11 +3,12 @@
 Импортируются для регистрации декораторов.
 
 ВАЖНО: Порядок импорта имеет значение!
-Специфичные хендлеры (rent, search) должны быть ПЕРЕД общими (menu).
+Специфичные хендлеры (rent, search, subscriptions) должны быть ПЕРЕД общими (menu).
 """
 # Импортируем в правильном порядке: от специфичных к общим
-from . import rent    # Специфичные хендлеры для создания объявлений
-from . import search  # Специфичные хендлеры для поиска
-from . import menu    # Общие хендлеры (menu, start, fallback) - ПОСЛЕДНИМ!
+from . import rent          # Специфичные хендлеры для создания объявлений
+from . import search        # Специфичные хендлеры для поиска
+from . import subscriptions # Специфичные хендлеры для подписок
+from . import menu          # Общие хендлеры (menu, start, fallback) - ПОСЛЕДНИМ!
 
-__all__ = ["rent", "search", "menu"]
+__all__ = ["rent", "search", "subscriptions", "menu"]

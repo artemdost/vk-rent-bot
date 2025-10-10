@@ -77,13 +77,13 @@ async def send_search_results_chunk(
     if next_offset < total:
         await message.answer(
             f"Показал {next_offset} из {total}. Продолжить?",
-            keyboard=search_results_keyboard(True),
+            keyboard=search_results_keyboard(True, show_subscribe=True),
         )
         return True
 
     await message.answer(
         "Это все подходящие объявления.",
-        keyboard=main_menu_inline(),
+        keyboard=search_results_keyboard(False, show_subscribe=True),
     )
     return False
 
