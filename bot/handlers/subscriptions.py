@@ -152,6 +152,10 @@ async def handle_subscription_action(message: Message):
     # Импорты
     from bot.bot_instance import search_sessions
 
+    # Обработка кнопок из главного меню - пропускаем, чтобы обработал menu.py
+    if text in ["Меню", "Назад", "Отмена", "Выложить", "Посмотреть", "Мои подписки", "Поддержка"]:
+        return
+
     # Обработка кнопки "⬅️ К подпискам"
     if text == "⬅️ К подпискам":
         await show_subscriptions(message)
