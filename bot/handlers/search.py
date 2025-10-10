@@ -154,14 +154,8 @@ async def run_search_and_reply(message: Message, uid: str, is_subscribed: bool) 
                 f"https://vk.com/club{GROUP_ID}"
             )
 
-    # ВСЕГДА показываем кнопку подписки, даже если есть еще результаты
     if has_more:
         await bot.state_dispenser.set(message.peer_id, SearchStates.RESULTS)
-        # Отправляем дополнительное сообщение с кнопкой подписки
-        await message.answer(
-            "💡 Хотите получать уведомления о новых объявлениях с такими параметрами?",
-            keyboard=search_results_keyboard(True, show_subscribe=True)
-        )
     else:
         try:
             try:
@@ -444,7 +438,7 @@ async def search_results_handler(message: Message):
     """Обработчик навигации по результатам поиска."""
     uid = str(message.from_id)
     peer = message.peer_id
-    text = (message.text or "").strip().lower()
+    text = (message.text or "").strip()
 
     session = search_sessions.get(uid)
     if not session or not session.get("results"):
@@ -459,7 +453,9 @@ async def search_results_handler(message: Message):
         _search_reset(uid)
         return
 
-    if text in {"меню", "в меню", "выход"}:
+    text_lower = text.lower()
+
+    if text_lower in {"меню", "в меню", "выход"}:
         _search_reset(uid)
         try:
             await bot.state_dispenser.delete(peer)
@@ -468,7 +464,12 @@ async def search_results_handler(message: Message):
         await message.answer("Вы вернулись в меню.", keyboard=main_menu_inline())
         return
 
-    if text in {"ещё 10", "ещё", "еще 10", "еще", "продолжить"}:
+    # Обработка кнопки подписки - пропускаем в основной обработчик
+    if text == "🔔 Подписаться на уведомления":
+        # Не обрабатываем здесь, пусть обработает subscribe_to_notifications
+        return
+
+    if text_lower in {"ещё 10", "ещё", "еще 10", "еще", "продолжить"}:
         has_more = await send_search_results_chunk(
             message, uid, chunk_size=SEARCH_RESULTS_PAGE_SIZE
         )
