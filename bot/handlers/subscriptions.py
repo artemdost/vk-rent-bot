@@ -45,14 +45,6 @@ def format_filters(filters: dict) -> str:
     else:
         parts.append("Комнат: любое")
 
-    recent_days = filters.get("recent_days")
-    if recent_days == 7:
-        parts.append("Период: 7 дней")
-    elif recent_days == 30:
-        parts.append("Период: 30 дней")
-    else:
-        parts.append("Период: любой")
-
     return "\n".join(parts)
 
 
@@ -71,13 +63,12 @@ async def subscribe_to_notifications(message: Message):
         )
         return
 
-    # Извлекаем фильтры из сессии
+    # Извлекаем фильтры из сессии (без периода - подписки работают на все новые объявления)
     filters = {
         "district": session.get("district"),
         "price_min": session.get("price_min"),
         "price_max": session.get("price_max"),
         "rooms": session.get("rooms"),
-        "recent_days": session.get("recent_days"),
     }
 
     # Проверяем на дубликаты
@@ -158,8 +149,7 @@ async def show_subscriptions(message: Message):
     if len(subscriptions) % 2 != 0:
         kb.row()
 
-    # Убрали кнопку "Меню" - она и так работает глобально
-    # kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
+    kb.add(Text("Меню"), color=KeyboardButtonColor.NEGATIVE)
 
     await message.answer(text, keyboard=kb.get_json())
 

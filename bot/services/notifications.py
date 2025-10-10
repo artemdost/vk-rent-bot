@@ -231,12 +231,61 @@ async def check_new_posts_and_notify() -> int:
         return 0
 
 
+async def initialize_last_post_id():
+    """
+    Инициализирует last_checked_post_id при запуске бота.
+    Устанавливает ID последнего поста, чтобы не отправлять уведомления о старых постах.
+    """
+    from bot.config import USER_TOKEN, UPLOAD_TOKEN
+
+    if not GROUP_ID:
+        logger.warning("GROUP_ID not configured, skipping initialization")
+        return
+
+    token_for_wall = USER_TOKEN or UPLOAD_TOKEN
+    if not token_for_wall:
+        logger.warning("USER_TOKEN or UPLOAD_TOKEN not configured, skipping initialization")
+        return
+
+    try:
+        owner_id = -abs(int(GROUP_ID))
+
+        # Получаем самый последний пост
+        response = vk_api_call(
+            "wall.get",
+            {
+                "owner_id": owner_id,
+                "count": 1,  # Только последний пост
+                "offset": 0,
+            },
+            token=token_for_wall,
+        )
+
+        if "error" in response:
+            logger.warning("Failed to fetch posts for initialization: %s", response["error"].get("error_msg"))
+            return
+
+        items = response.get("response", {}).get("items", [])
+        if items:
+            latest_post_id = items[0].get("id")
+            storage.set_last_checked_post_id(latest_post_id)
+            logger.info("Initialized last_checked_post_id to %s", latest_post_id)
+        else:
+            logger.warning("No posts found during initialization")
+
+    except Exception as e:
+        logger.exception("Error during last_post_id initialization: %s", e)
+
+
 async def notification_loop():
     """
     Бесконечный цикл проверки новых постов.
     Проверяет каждые 5 минут.
     """
     logger.info("Notification loop started")
+
+    # Инициализируем last_checked_post_id перед началом цикла
+    await initialize_last_post_id()
 
     while True:
         try:
