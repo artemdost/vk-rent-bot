@@ -180,7 +180,6 @@ async def handle_subscription_action(message: Message):
             f"✅ Подписка {status_text}.",
             keyboard=main_menu_inline(),
         )
-        await show_subscriptions(message)
         return
 
     # Обработка кнопки "🗑 Удалить"
@@ -206,8 +205,6 @@ async def handle_subscription_action(message: Message):
             # Очищаем сессию
             if "current_subscription_id" in session:
                 del session["current_subscription_id"]
-            # Показываем обновленный список
-            await show_subscriptions(message)
         else:
             await message.answer(
                 "❌ Не удалось удалить подписку.",
