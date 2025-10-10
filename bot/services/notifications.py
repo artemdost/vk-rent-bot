@@ -97,6 +97,9 @@ async def send_notification(user_id: int, post: Dict[str, Any], filters: Dict[st
             f"Смотрите объявление ниже:"
         )
 
+        # Импортируем клавиатуру меню
+        from bot.keyboards import main_menu_inline
+
         # Используем синхронный вызов через vk_api_call
         response = vk_api_call(
             "messages.send",
@@ -105,6 +108,7 @@ async def send_notification(user_id: int, post: Dict[str, Any], filters: Dict[st
                 "random_id": _random_id(),
                 "message": message,
                 "attachment": attachment,
+                "keyboard": main_menu_inline(),  # Добавляем клавиатуру
             },
             token=TOKEN_FOR_BOT,
         )

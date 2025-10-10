@@ -233,6 +233,7 @@ async def toggle_subscription(message: Message):
 
     await message.answer(
         f"✅ Подписка {status_text}.",
+        keyboard=main_menu_inline(),
     )
 
     # Перенаправляем обратно к списку подписок
@@ -262,6 +263,7 @@ async def delete_subscription(message: Message):
     if success:
         await message.answer(
             "✅ Подписка удалена.",
+            keyboard=main_menu_inline(),
         )
         logger.info("User %s deleted subscription %s", user_id, sub_id)
         # Очищаем сессию
