@@ -130,10 +130,7 @@ async def show_subscriptions(message: Message):
     for idx, sub in enumerate(subscriptions, 1):
         is_enabled = sub.get("enabled", True)
         icon = "✅" if is_enabled else "⏸"
-        kb.add(
-            Text(f"{icon} Подписка #{idx}"),
-            payload={"action": "view_sub", "sub_id": sub["id"]},
-        )
+        kb.add(Text(f"{icon} Подписка #{idx}"))
         if idx % 2 == 0:
             kb.row()
 
@@ -155,6 +152,7 @@ async def handle_subscription_action(message: Message):
         return
 
     user_id = message.from_id
+    uid = str(user_id)
     subscriptions = storage.get_user_subscriptions(user_id)
 
     if not subscriptions:
@@ -177,12 +175,18 @@ async def handle_subscription_action(message: Message):
         )
         return
 
+    # Сохраняем ID подписки в сессии для дальнейших действий
+    from bot.bot_instance import search_sessions
+    if uid not in search_sessions:
+        search_sessions[uid] = {}
+    search_sessions[uid]["current_subscription_id"] = sub["id"]
+
     # Показываем детали подписки с действиями
     is_enabled = sub.get("enabled", True)
     status = "✅ Активна" if is_enabled else "⏸ Отключена"
     filter_text = format_filters(sub.get("filters", {}))
 
-    text = (
+    response_text = (
         f"📋 Подписка #{sub_num}\n"
         f"Статус: {status}\n"
         f"ID: {sub['id']}\n\n"
@@ -194,48 +198,34 @@ async def handle_subscription_action(message: Message):
     kb = Keyboard(inline=True)
 
     if is_enabled:
-        kb.add(
-            Text("⏸ Отключить"),
-            payload={"action": "toggle_sub", "sub_id": sub["id"]},
-        )
+        kb.add(Text("⏸ Отключить"))
     else:
-        kb.add(
-            Text("▶️ Включить"),
-            payload={"action": "toggle_sub", "sub_id": sub["id"]},
-            color=KeyboardButtonColor.POSITIVE,
-        )
+        kb.add(Text("▶️ Включить"), color=KeyboardButtonColor.POSITIVE)
 
-    kb.add(
-        Text("🗑 Удалить"),
-        payload={"action": "delete_sub", "sub_id": sub["id"]},
-        color=KeyboardButtonColor.NEGATIVE,
-    )
+    kb.add(Text("🗑 Удалить"), color=KeyboardButtonColor.NEGATIVE)
     kb.row()
     kb.add(Text("⬅️ К подпискам"), color=KeyboardButtonColor.PRIMARY)
 
-    await message.answer(text, keyboard=kb.get_json())
+    await message.answer(response_text, keyboard=kb.get_json())
 
 
 @bot.on.message(text=["⏸ Отключить", "▶️ Включить"])
 async def toggle_subscription(message: Message):
     """Переключает статус подписки."""
     user_id = message.from_id
+    uid = str(user_id)
 
-    # Ищем последнюю открытую подписку (простой подход)
-    # В реальности нужно хранить контекст в сессии
-    subscriptions = storage.get_user_subscriptions(user_id)
+    # Получаем ID подписки из сессии
+    from bot.bot_instance import search_sessions
+    session = search_sessions.get(uid, {})
+    sub_id = session.get("current_subscription_id")
 
-    if not subscriptions:
+    if not sub_id:
         await message.answer(
-            "❌ Подписки не найдены.",
+            "❌ Подписка не найдена. Выберите подписку из списка.",
             keyboard=main_menu_inline(),
         )
         return
-
-    # Берём первую подписку (упрощение)
-    # TODO: Улучшить через payload или state
-    sub = subscriptions[0]
-    sub_id = sub["id"]
 
     new_status = storage.toggle_subscription(user_id, sub_id)
 
@@ -243,7 +233,6 @@ async def toggle_subscription(message: Message):
 
     await message.answer(
         f"✅ Подписка {status_text}.",
-        keyboard=main_menu_inline(),
     )
 
     # Перенаправляем обратно к списку подписок
@@ -254,28 +243,32 @@ async def toggle_subscription(message: Message):
 async def delete_subscription(message: Message):
     """Удаляет подписку."""
     user_id = message.from_id
+    uid = str(user_id)
 
-    subscriptions = storage.get_user_subscriptions(user_id)
+    # Получаем ID подписки из сессии
+    from bot.bot_instance import search_sessions
+    session = search_sessions.get(uid, {})
+    sub_id = session.get("current_subscription_id")
 
-    if not subscriptions:
+    if not sub_id:
         await message.answer(
-            "❌ Подписки не найдены.",
+            "❌ Подписка не найдена. Выберите подписку из списка.",
             keyboard=main_menu_inline(),
         )
         return
-
-    # Берём первую подписку (упрощение)
-    sub = subscriptions[0]
-    sub_id = sub["id"]
 
     success = storage.delete_subscription(user_id, sub_id)
 
     if success:
         await message.answer(
             "✅ Подписка удалена.",
-            keyboard=main_menu_inline(),
         )
         logger.info("User %s deleted subscription %s", user_id, sub_id)
+        # Очищаем сессию
+        if "current_subscription_id" in session:
+            del session["current_subscription_id"]
+        # Показываем обновленный список
+        await show_subscriptions(message)
     else:
         await message.answer(
             "❌ Не удалось удалить подписку.",
