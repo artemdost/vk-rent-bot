@@ -88,7 +88,7 @@ async def send_search_results_chunk(
     return False
 
 
-async def run_search_and_reply(message: Message, uid: str) -> None:
+async def run_search_and_reply(message: Message, uid: str, is_subscribed: bool) -> None:
     """Выполняет поиск и отправляет результаты."""
     session = get_search_session(uid)
     filters = {
@@ -141,6 +141,19 @@ async def run_search_and_reply(message: Message, uid: str) -> None:
         message, uid, chunk_size=SEARCH_RESULTS_PAGE_SIZE
     )
 
+    # Увеличиваем счетчик поисков ПОСЛЕ успешного показа результатов
+    if not is_subscribed:
+        user_id = message.from_id
+        new_count = storage.increment_search_count(user_id)
+        remaining = MAX_SEARCHES_UNSUBSCRIBED - new_count
+
+        if remaining > 0:
+            await message.answer(
+                f"ℹ️ У вас осталось {remaining} бесплатных поисков.\n"
+                f"Подпишитесь на сообщество для неограниченного доступа:\n"
+                f"https://vk.com/club{GROUP_ID}"
+            )
+
     if has_more:
         await bot.state_dispenser.set(message.peer_id, SearchStates.RESULTS)
     else:
@@ -181,19 +194,8 @@ async def view_rents(message: Message):
             )
             return
 
-        # Увеличиваем счетчик
-        new_count = storage.increment_search_count(user_id)
-        remaining = MAX_SEARCHES_UNSUBSCRIBED - new_count
-
-        if remaining > 0:
-            await message.answer(
-                f"ℹ️ У вас осталось {remaining} бесплатных поисков.\n"
-                f"Подпишитесь на сообщество для неограниченного доступа:\n"
-                f"https://vk.com/club{GROUP_ID}"
-            )
-
-    # Начинаем поиск
-    search_sessions[uid] = {}
+    # Начинаем поиск (счетчик увеличится ПОСЛЕ показа результатов)
+    search_sessions[uid] = {"is_subscribed": is_subscribed}
     await bot.state_dispenser.set(message.peer_id, SearchStates.DISTRICT)
     await message.answer("Подберём объявления из сообщества по вашим фильтрам.")
     await prompt_search_state(message, SearchStates.DISTRICT)
@@ -425,7 +427,9 @@ async def search_recent_days_handler(message: Message):
     except (KeyError, Exception):
         pass
 
-    await run_search_and_reply(message, uid)
+    # Получаем информацию о подписке из сессии
+    is_subscribed = session.get("is_subscribed", True)
+    await run_search_and_reply(message, uid, is_subscribed)
 
 
 @bot.on.message(state=SearchStates.RESULTS)
