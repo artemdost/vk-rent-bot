@@ -262,12 +262,12 @@ async def initialize_last_post_id():
     try:
         owner_id = -abs(int(GROUP_ID))
 
-        # Получаем самый последний пост
+        # Получаем последние 10 постов чтобы найти максимальный ID
         response = vk_api_call(
             "wall.get",
             {
                 "owner_id": owner_id,
-                "count": 1,  # Только последний пост
+                "count": 10,
                 "offset": 0,
             },
             token=token_for_wall,
@@ -279,9 +279,10 @@ async def initialize_last_post_id():
 
         items = response.get("response", {}).get("items", [])
         if items:
-            latest_post_id = items[0].get("id")
-            storage.set_last_checked_post_id(latest_post_id)
-            logger.info("Initialized last_checked_post_id to %s", latest_post_id)
+            # Находим максимальный ID среди всех постов
+            max_post_id = max(post.get("id", 0) for post in items)
+            storage.set_last_checked_post_id(max_post_id)
+            logger.info("Initialized last_checked_post_id to %s (max from %d posts)", max_post_id, len(items))
         else:
             logger.warning("No posts found during initialization")
 
