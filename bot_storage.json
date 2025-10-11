@@ -1,7 +1,41 @@
 {
   "user_search_count": {
-    "380811450": 1
+    "380811450": 1,
+    "782113040": 1,
+    "153332921": 1,
+    "322413175": 1,
+    "473744756": 1
   },
   "user_data": {},
-  "last_checked_post_id": 210
+  "last_checked_post_id": 225,
+  "user_subscriptions": {
+    "430503283": [
+      {
+        "id": "0185c1aa",
+        "filters": {
+          "district": null,
+          "price_min": null,
+          "price_max": null,
+          "rooms": null
+        },
+        "created_at": 1760097515,
+        "enabled": true,
+        "last_notified_post_id": 225
+      }
+    ],
+    "153332921": [
+      {
+        "id": "cf18cb64",
+        "filters": {
+          "district": "Ленинский",
+          "price_min": null,
+          "price_max": null,
+          "rooms": null
+        },
+        "created_at": 1760124968,
+        "enabled": true,
+        "last_notified_post_id": 211
+      }
+    ]
+  }
 }

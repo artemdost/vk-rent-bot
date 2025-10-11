@@ -30,8 +30,8 @@ async def notification_loop():
         except Exception as e:
             LOG.exception("Error in notification loop: %s", e)
 
-        # Проверяем каждую минуту
-        await asyncio.sleep(60)
+        # Проверяем каждые 5 минут
+        await asyncio.sleep(300)
 
 
 async def start_notification_loop():
