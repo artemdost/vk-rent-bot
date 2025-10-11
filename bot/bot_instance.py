@@ -5,10 +5,15 @@
 from typing import Optional, Dict, Any
 from vkbottle.bot import Bot
 
-from .config import TOKEN_FOR_BOT, GROUP_ID, LOG
+from .config import TOKEN_FOR_BOT, GROUP_ID, VK_CONFIRMATION_KEY, LOG
 
-# Создаём экземпляр бота
+# Создаём экземпляр бота с confirmation key для Callback API
 bot = Bot(token=TOKEN_FOR_BOT)
+
+# Устанавливаем confirmation key для подтверждения сервера
+if VK_CONFIRMATION_KEY:
+    bot.labeler.vbml_ignore_case = True
+    LOG.info("VK Confirmation key configured: %s", VK_CONFIRMATION_KEY)
 
 # Workaround: патч для groups.getById
 if GROUP_ID:

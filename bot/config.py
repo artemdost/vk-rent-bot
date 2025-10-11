@@ -21,6 +21,7 @@ GROUP_TOKEN = os.getenv("GROUP_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID") or 0)
 API_V = os.getenv("VK_API_VERSION", "5.199")
 UPLOAD_TOKEN = os.getenv("UPLOAD_TOKEN")
+VK_CONFIRMATION_KEY = os.getenv("VK_CONFIRMATION_KEY", "")
 
 # Выбираем токен для бота (предпочитаем user-token)
 TOKEN_FOR_BOT = USER_TOKEN or GROUP_TOKEN
