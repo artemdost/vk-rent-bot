@@ -180,61 +180,62 @@ async def check_new_posts_and_notify() -> int:
                 new_posts.append(post)
 
         if not new_posts:
+            # Ничего нового нет
             return 0
 
-        logger.info("Found %d new posts", len(new_posts))
+        logger.info("Found %d new posts to process", len(new_posts))
 
         # Получаем все активные подписки
         active_subs = storage.get_all_active_subscriptions()
         if not active_subs:
-            # Обновляем ID последнего проверенного поста даже если нет подписок
+            logger.info("No active subscriptions, skipping notifications")
+            # Обновляем last_checked_post_id чтобы не проверять эти посты снова
             if latest_post_id:
                 storage.set_last_checked_post_id(latest_post_id)
             return 0
 
         notifications_sent = 0
 
-        # Проверяем каждый новый пост
+        # Проверяем каждый новый пост (от старых к новым)
         for post in new_posts:
+            post_id = post.get("id")
             text = post.get("text", "")
             parsed = parse_post_text(text)
 
-            if not parsed:
-                continue
+            # Обрабатываем пост только если он содержит данные объявления
+            if parsed:
+                # Проверяем каждую подписку
+                for user_id, subscription in active_subs:
+                    filters = subscription.get("filters", {})
+                    sub_id = subscription.get("id")
+                    last_notified = subscription.get("last_notified_post_id")
 
-            post_id = post.get("id")
+                    # Пропускаем если этот пост уже был отправлен этой подписке
+                    if last_notified is not None and post_id <= last_notified:
+                        continue
 
-            # Проверяем каждую подписку
-            for user_id, subscription in active_subs:
-                filters = subscription.get("filters", {})
-                sub_id = subscription.get("id")
-                last_notified = subscription.get("last_notified_post_id")
+                    if match_post_with_filters(parsed, filters):
+                        success = await send_notification(user_id, post, filters)
+                        if success:
+                            notifications_sent += 1
+                            # Обновляем ID последнего отправленного поста для этой подписки
+                            storage.update_subscription_last_notified_post(user_id, sub_id, post_id)
+                            logger.info(
+                                "Sent notification to user %s for post %s (subscription %s)",
+                                user_id,
+                                post_id,
+                                sub_id,
+                            )
 
-                # Пропускаем если этот пост уже был отправлен этой подписке
-                if last_notified is not None and post_id <= last_notified:
-                    continue
+                        # Небольшая задержка между отправками
+                        await asyncio.sleep(0.5)
 
-                if match_post_with_filters(parsed, filters):
-                    success = await send_notification(user_id, post, filters)
-                    if success:
-                        notifications_sent += 1
-                        # Обновляем ID последнего отправленного поста для этой подписки
-                        storage.update_subscription_last_notified_post(user_id, sub_id, post_id)
-                        logger.info(
-                            "Sent notification to user %s for post %s (subscription %s)",
-                            user_id,
-                            post_id,
-                            sub_id,
-                        )
+            # Обновляем last_checked_post_id после обработки каждого поста
+            storage.set_last_checked_post_id(post_id)
 
-                    # Небольшая задержка между отправками
-                    await asyncio.sleep(0.5)
+        if notifications_sent > 0:
+            logger.info("Sent %d notifications", notifications_sent)
 
-        # Обновляем ID последнего проверенного поста
-        if latest_post_id:
-            storage.set_last_checked_post_id(latest_post_id)
-
-        logger.info("Sent %d notifications", notifications_sent)
         return notifications_sent
 
     except Exception as e:

@@ -36,6 +36,11 @@ async def notification_loop():
 
 async def start_notification_loop():
     """Запускает фоновую задачу для проверки новых постов."""
+    # Инициализируем last_checked_post_id при запуске
+    from bot.services.notifications import initialize_last_post_id
+    await initialize_last_post_id()
+    LOG.info("Initialized - will notify only about posts published after bot start")
+
     asyncio.create_task(notification_loop())
 
 
