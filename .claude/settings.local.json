@@ -4,7 +4,9 @@
       "Bash(awk:*)",
       "Bash(timeout:*)",
       "Bash(find:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []

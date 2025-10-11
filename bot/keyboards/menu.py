@@ -13,6 +13,8 @@ def main_menu_inline() -> str:
     kb.row()
     kb.add(Text(Button.MY_SUBSCRIPTIONS), color=KeyboardButtonColor.PRIMARY)
     kb.row()
+    kb.add(Text(Button.CHECK_CONTRACT), color=KeyboardButtonColor.POSITIVE)
+    kb.row()
     kb.add(Text(Button.SUPPORT), color=KeyboardButtonColor.SECONDARY)
     return kb.get_json()
 
