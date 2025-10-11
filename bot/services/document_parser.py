@@ -5,7 +5,7 @@
 import os
 import tempfile
 import requests
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Any
 import logging
 import base64
 import io
@@ -31,7 +31,7 @@ try:
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
-    logging.warning("PIL или pytesseract не установлены. OCR для изображений недоступен.")
+    # OCR библиотеки опциональны - изображения можно обрабатывать через Deepseek API
 
 
 class DocumentParser:
@@ -143,17 +143,23 @@ class DocumentParser:
 
     def extract_text_from_image(self, content: bytes) -> Optional[str]:
         """
-        Извлекает текст из изображения с помощью OCR.
+        Извлекает текст из изображения с помощью OCR или возвращает base64 для Deepseek.
 
         Args:
             content: Содержимое изображения
 
         Returns:
-            Извлеченный текст или None при ошибке
+            Извлеченный текст, base64 строка или None при ошибке
         """
         if not OCR_AVAILABLE:
-            # Если OCR недоступен, возвращаем заглушку
-            return "[Изображение документа - требуется ручная проверка]"
+            # Если OCR недоступен, конвертируем изображение в base64 для отправки в Deepseek
+            try:
+                import base64
+                base64_image = base64.b64encode(content).decode('utf-8')
+                return f"[IMAGE:{base64_image}]"
+            except Exception as e:
+                self.logger.error(f"Ошибка кодирования изображения в base64: {e}")
+                return "[Изображение документа - не удалось обработать]"
 
         try:
             image = Image.open(io.BytesIO(content))
@@ -196,24 +202,26 @@ class DocumentParser:
             self.logger.error(f"Ошибка чтения TXT файла: {e}")
             return None
 
-    async def extract_text_from_attachment(self, attachment: Dict[str, Any]) -> Optional[str]:
+    async def extract_text_from_attachment(self, attachment: Any) -> Optional[str]:
         """
         Извлекает текст из вложения VK.
 
         Args:
-            attachment: Объект вложения из VK API
+            attachment: Объект вложения из VK API (VKBottle Pydantic model)
 
         Returns:
             Извлеченный текст или None при ошибке
         """
         try:
-            attachment_type = attachment.get('type')
+            # VKBottle использует Pydantic модели, получаем тип через атрибут
+            attachment_type = getattr(attachment, 'type', None)
 
             # Обработка документов
             if attachment_type == 'doc':
-                doc = attachment.get('doc', {})
-                url = doc.get('url')
-                ext = doc.get('ext', '').lower()
+                doc = getattr(attachment, 'doc', None)
+                if doc:
+                    url = getattr(doc, 'url', None)
+                    ext = getattr(doc, 'ext', '').lower()
 
                 if not url:
                     return None
@@ -236,22 +244,20 @@ class DocumentParser:
 
             # Обработка изображений
             elif attachment_type == 'photo':
-                photo = attachment.get('photo', {})
+                photo = getattr(attachment, 'photo', None)
+                if not photo:
+                    return None
 
                 # Ищем изображение максимального размера
                 max_size_url = None
-                max_size = 0
 
-                for size_key in ['photo_2560', 'photo_1280', 'photo_807', 'photo_604', 'photo_130', 'photo_75']:
-                    if size_key in photo:
-                        max_size_url = photo[size_key]
-                        break
-
-                # Альтернативный способ получения URL через sizes
-                if not max_size_url and 'sizes' in photo:
-                    sizes = sorted(photo['sizes'], key=lambda x: x.get('width', 0) * x.get('height', 0), reverse=True)
-                    if sizes:
-                        max_size_url = sizes[0].get('url')
+                # VKBottle photo object has sizes attribute
+                sizes = getattr(photo, 'sizes', None)
+                if sizes:
+                    # Сортируем по размеру (ширина * высота)
+                    sorted_sizes = sorted(sizes, key=lambda x: getattr(x, 'width', 0) * getattr(x, 'height', 0), reverse=True)
+                    if sorted_sizes:
+                        max_size_url = getattr(sorted_sizes[0], 'url', None)
 
                 if not max_size_url:
                     return None
@@ -272,12 +278,12 @@ class DocumentParser:
             self.logger.error(f"Ошибка обработки вложения: {e}")
             return None
 
-    async def extract_all_texts(self, attachments: List[Dict[str, Any]]) -> List[str]:
+    async def extract_all_texts(self, attachments: List[Any]) -> List[str]:
         """
         Извлекает текст из всех вложений.
 
         Args:
-            attachments: Список вложений из VK API
+            attachments: Список вложений из VK API (VKBottle Pydantic models)
 
         Returns:
             Список извлеченных текстов
@@ -291,23 +297,25 @@ class DocumentParser:
 
         return texts
 
-    def get_file_type_description(self, attachment: Dict[str, Any]) -> str:
+    def get_file_type_description(self, attachment: Any) -> str:
         """
         Получает описание типа файла для пользователя.
 
         Args:
-            attachment: Объект вложения из VK API
+            attachment: Объект вложения из VK API (VKBottle Pydantic model)
 
         Returns:
             Описание типа файла
         """
-        attachment_type = attachment.get('type')
+        attachment_type = getattr(attachment, 'type', None)
 
         if attachment_type == 'doc':
-            doc = attachment.get('doc', {})
-            ext = doc.get('ext', '').upper()
-            title = doc.get('title', 'документ')
-            return f"{ext} документ '{title}'"
+            doc = getattr(attachment, 'doc', None)
+            if doc:
+                ext = getattr(doc, 'ext', '').upper()
+                title = getattr(doc, 'title', 'документ')
+                return f"{ext} документ '{title}'"
+            return "документ"
         elif attachment_type == 'photo':
             return "изображение"
         else:

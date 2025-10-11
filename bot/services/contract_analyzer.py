@@ -72,16 +72,15 @@ class ContractAnalyzer:
     async def _analyze_with_deepseek(self, text: str) -> ContractAnalysisResult:
         """Анализ с использованием Deepseek API."""
         try:
-            prompt = self._create_analysis_prompt(text)
-
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [
+            # Проверяем, есть ли изображения в тексте
+            if "[IMAGE:" in text:
+                # Если есть изображения, используем мультимодальную модель Deepseek
+                messages = self._prepare_multimodal_messages(text)
+                model = "deepseek-vision"  # Модель для обработки изображений
+            else:
+                # Для текста используем обычную модель
+                prompt = self._create_analysis_prompt(text)
+                messages = [
                     {
                         "role": "system",
                         "content": "Ты опытный юридический эксперт по договорам аренды жилья в России. Твоя задача - анализировать договоры и находить потенциальные риски для арендатора."
@@ -90,7 +89,17 @@ class ContractAnalyzer:
                         "role": "user",
                         "content": prompt
                     }
-                ],
+                ]
+                model = "deepseek-chat"
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": model,
+                "messages": messages,
                 "temperature": 0.3,
                 "max_tokens": 4000,
                 "stream": False
@@ -118,6 +127,58 @@ class ContractAnalyzer:
             self.logger.error(f"Ошибка Deepseek API: {e}")
             return await self._analyze_with_rules(text)
 
+    def _prepare_multimodal_messages(self, text: str) -> List[Dict]:
+        """
+        Подготавливает сообщения для мультимодальной модели Deepseek.
+
+        Args:
+            text: Текст с маркерами изображений [IMAGE:base64]
+
+        Returns:
+            Список сообщений для API
+        """
+        import re
+
+        # Извлекаем все изображения из текста
+        image_pattern = r'\[IMAGE:(.*?)\]'
+        images = re.findall(image_pattern, text)
+
+        # Убираем маркеры изображений из текста
+        clean_text = re.sub(image_pattern, '[Изображение договора]', text)
+
+        # Формируем сообщения с изображениями
+        content = [
+            {
+                "type": "text",
+                "text": f"""Проанализируй договор аренды на фотографиях и найди потенциальные проблемы.
+
+{self._get_analysis_instructions()}
+
+Если на изображениях есть текст, прочитай его и проанализируй.
+Верни результат в формате JSON как указано выше."""
+            }
+        ]
+
+        # Добавляем изображения
+        for i, base64_image in enumerate(images[:5]):  # Ограничиваем до 5 изображений
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image}"
+                }
+            })
+
+        return [
+            {
+                "role": "system",
+                "content": "Ты опытный юридический эксперт по договорам аренды жилья в России. Твоя задача - анализировать договоры и находить потенциальные риски для арендатора."
+            },
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
+
     def _create_analysis_prompt(self, text: str) -> str:
         """Создает промпт для AI анализа."""
         return f"""Проанализируй договор аренды жилья и найди потенциальные проблемы и подвохи.
@@ -125,8 +186,12 @@ class ContractAnalyzer:
 ДОГОВОР:
 {text[:5000]}  # Ограничиваем размер для экономии токенов
 
-Проанализируй договор и верни результат СТРОГО в формате JSON:
-{{
+{self._get_analysis_instructions()}"""
+
+    def _get_analysis_instructions(self) -> str:
+        """Возвращает инструкции для анализа договора."""
+        return """Проанализируй договор и верни результат СТРОГО в формате JSON:
+{
     "overall_risk": "low/medium/high",
     "summary": "Краткое резюме на 2-3 предложения",
     "issues": [
